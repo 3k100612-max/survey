@@ -1,0 +1,3 @@
+flask
+textblob
+psycopg2-binary

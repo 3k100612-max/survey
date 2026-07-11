@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Text Mining & Sentiment Insights</title>
+    
+    <!-- MathJax for Formulas -->
+    <script>
+      window.MathJax = { tex: { inlineMath: [['\\(', '\\)']], displayMath: [['$$', '$$']] } };
+    </script>
+    <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <style>
+        :root {
+            --primary: #4f46e5; --secondary: #7c3aed; --success: #10b981;
+            --danger: #ef4444; --bg: #f8fafc; --text: #1e293b;
+        }
+
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        
+        .card { background: white; border-radius: 16px; padding: 2rem; box-shadow: 0 4px 20px rgba(0,0,0,0.05); margin-bottom: 2rem; border: 1px solid #e2e8f0; }
+        
+        h1, h2 { color: var(--primary); margin-top: 0; }
+        
+        .formula-box { background: #f1f5f9; padding: 1rem; border-radius: 12px; margin: 1rem 0; text-align: center; }
+        
+        textarea { width: 100%; min-height: 120px; padding: 1rem; border-radius: 8px; border: 2px solid #e2e8f0; font-family: inherit; margin-bottom: 1rem; }
+        textarea:focus { border-color: var(--secondary); outline: none; }
+        
+        .btn { padding: 12px 24px; border-radius: 8px; border: none; cursor: pointer; font-weight: 600; transition: 0.2s; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-secondary { background: #64748b; color: white; }
+        .btn-sentiment { background: var(--secondary); color: white; width: 100%; font-size: 1.1rem; }
+        .btn:hover { opacity: 0.9; transform: translateY(-1px); }
+
+        /* Admin Dashboard Styles */
+        .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin: 2rem 0; }
+        .stat-box { background: #f8fafc; padding: 1.5rem; border-radius: 12px; text-align: center; border: 1px solid #e2e8f0; }
+        .stat-val { font-size: 2rem; font-weight: 800; color: var(--secondary); }
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #f1f5f9; }
+        .badge { padding: 4px 12px; border-radius: 999px; font-size: 0.8rem; font-weight: bold; }
+        .badge-pos { background: #d1fae5; color: #065f46; }
+        .badge-neg { background: #fee2e2; color: #991b1b; }
+
+        .meter { height: 12px; background: #e2e8f0; border-radius: 10px; overflow: hidden; margin: 10px 0; }
+        .meter-fill { height: 100%; transition: width 0.5s; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header style="text-align: center; margin-bottom: 3rem;">
+        <h1>Text Mining & Sentiment Analysis</h1>
+        <p>A Mathematical Approach to Unstructured Data</p>
+    </header>
+
+    <!-- Section 1: TF-IDF Simulation -->
+    <section class="card">
+        <h2>1. The TF-IDF Signal Filter</h2>
+        <div class="formula-box">
+            $$w_{t,d} = \text{TF}(t,d) \times \log\left(\frac{N}{n_t}\right)$$
+        </div>
+        <textarea id="docsInput">The contract requires a signature.
+The customer requested a refund.
+The battery life is excellent.</textarea>
+        <div style="display: flex; gap: 10px;">
+            <input type="text" id="wordInput" placeholder="Enter word..." style="flex:1; padding:10px; border-radius:8px; border:1px solid #ccc;">
+            <button class="btn btn-primary" onclick="analyzeWord()">Analyze Word</button>
+            <button class="btn btn-secondary" onclick="compareDocs()">Similarity</button>
+        </div>
+        <div id="miningOutput"></div>
+    </section>
+
+    <!-- Section 2: Sentiment Survey -->
+    <section class="card" style="border-top: 5px solid var(--secondary);">
+        <h2>2. Live Presentation Feedback</h2>
+        <p>Submit your feedback to see real-time NLP sentiment processing.</p>
+        <textarea id="surveyText" placeholder="What did you think of the presentation?"></textarea>
+        <button class="btn btn-sentiment" id="submitBtn" onclick="sendFeedback()">Submit Response</button>
+    </section>
+
+    <!-- Section 3: Admin Dashboard -->
+    <section id="adminSection" class="card" style="display:none;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h2>Instructor Insights</h2>
+            <button class="btn btn-secondary" onclick="refreshStats()">Refresh Data</button>
+        </div>
+        <div class="stats-grid">
+            <div class="stat-box"><div>Total Responses</div><div id="totalCount" class="stat-val">0</div></div>
+            <div class="stat-box"><div>Avg. Polarity</div><div id="avgPol" class="stat-val">0.00</div></div>
+            <div class="stat-box"><div>Overall Health</div><div id="healthLabel" class="stat-val">--</div></div>
+        </div>
+        <table>
+            <thead><tr><th>Feedback</th><th>Polarity</th><th>Label</th></tr></thead>
+            <tbody id="feedbackBody"></tbody>
+        </table>
+    </section>
+
+    <div style="text-align: center; padding-bottom: 50px;">
+        <button class="btn btn-secondary" onclick="toggleAdmin()">Toggle Instructor View</button>
+    </div>
+</div>
+
+<script>
+    // --- TF-IDF & Similarity Logic ---
+    function clean(t) { return t.toLowerCase().replace(/[^a-z0-9\s]/g, "").split(/\s+/).filter(w => w.length > 0); }
+
+    function analyzeWord() {
+        const word = document.getElementById('wordInput').value.toLowerCase();
+        const docs = document.getElementById('docsInput').value.split('\n').filter(d => d.trim());
+        const nt = docs.filter(d => clean(d).includes(word)).length;
+        const idf = nt > 0 ? Math.log(docs.length / nt) : 0;
+        document.getElementById('miningOutput').innerHTML = `<div class="formula-box">Word: <b>${word}</b> | IDF Score: <b>${idf.toFixed(3)}</b></div>`;
+    }
+
+    function compareDocs() {
+        const docs = document.getElementById('docsInput').value.split('\n').filter(d => d.trim());
+        if(docs.length < 2) return;
+        const tokenized = docs.map(d => clean(d));
+        const vocab = Array.from(new Set(tokenized.flat()));
+        const df = {}; vocab.forEach(t => df[t] = tokenized.filter(w => w.includes(t)).length);
+        const vectors = tokenized.map(wds => vocab.map(t => (wds.filter(w => w === t).length) * Math.log(docs.length / df[t])));
+        
+        function cos(a, b) {
+            let d=0, ma=0, mb=0;
+            for(let i=0; i<a.length; i++) { d += a[i]*b[i]; ma += a[i]**2; mb += b[i]**2; }
+            return ma && mb ? d / (Math.sqrt(ma) * Math.sqrt(mb)) : 0;
+        }
+
+        let html = '<h3>Similarity to Doc 1</h3>';
+        vectors.forEach((v, i) => {
+            const s = cos(vectors[0], v);
+            html += `<div>Doc ${i+1}: ${s.toFixed(3)}</div><div class="meter"><div class="meter-fill" style="width:${s*100}%; background:var(--primary)"></div></div>`;
+        });
+        document.getElementById('miningOutput').innerHTML = html;
+    }
+
+    // --- Sentiment & Admin Logic ---
+    async function sendFeedback() {
+        const text = document.getElementById('surveyText').value;
+        const btn = document.getElementById('submitBtn');
+        if(!text.trim()) return;
+        
+        btn.innerText = "Processing...";
+        const res = await fetch('/submit_feedback', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({feedback: text})
+        });
+        const data = await res.json();
+        btn.innerText = "Submitted!";
+        btn.style.background = "var(--success)";
+        setTimeout(() => { btn.innerText = "Submit Response"; btn.style.background = "var(--secondary)"; }, 2000);
+    }
+
+    async function toggleAdmin() {
+        const el = document.getElementById('adminSection');
+        el.style.display = el.style.display === 'none' ? 'block' : 'none';
+        if(el.style.display === 'block') refreshStats();
+    }
+
+    async function refreshStats() {
+        const res = await fetch('/admin_stats');
+        const data = await res.json();
+        document.getElementById('totalCount').innerText = data.stats.total;
+        document.getElementById('avgPol').innerText = data.stats.avg_pol.toFixed(2);
+        document.getElementById('healthLabel').innerText = data.stats.avg_pol > 0 ? "Positive" : "Neutral";
+        
+        document.getElementById('feedbackBody').innerHTML = data.feedback.map(f => `
+            <tr>
+                <td>${f.feedback_text}</td>
+                <td>${f.polarity.toFixed(2)}</td>
+                <td><span class="badge ${f.sentiment_label === 'Positive' ? 'badge-pos' : 'badge-neg'}">${f.sentiment_label}</span></td>
+            </tr>
+        `).join('');
+    }
+</script>
+</body>
+</html>

@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Sentiment Analytics | Admin</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root { --bg: #f0f2f5; --primary: #4f46e5; --white: #ffffff; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg); margin: 0; display: flex; }
+        
+        /* Sidebar */
+        .sidebar { width: 260px; background: #1e293b; color: white; height: 100vh; padding: 20px; position: fixed; }
+        .main-content { margin-left: 300px; padding: 40px; width: calc(100% - 340px); }
+        
+        /* Dashboard Grid */
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+        .card { background: var(--white); padding: 25px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        
+        .stat-num { font-size: 2.5rem; font-weight: 800; color: var(--primary); }
+        .chart-container { height: 300px; margin-top: 20px; }
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; background: white; border-radius: 12px; overflow: hidden; }
+        th { background: #f8fafc; padding: 15px; text-align: left; color: #64748b; }
+        td { padding: 15px; border-top: 1px solid #f1f5f9; }
+        
+        .badge { padding: 5px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; }
+        .pos { background: #dcfce7; color: #166534; }
+        .neg { background: #fee2e2; color: #991b1b; }
+    </style>
+</head>
+<body>
+
+<div class="sidebar">
+    <h2>Instructor Dashboard</h2>
+    <p style="color: #94a3b8;">Text Mining Course 2026</p>
+    <hr style="border: 0; border-top: 1px solid #334155; margin: 20px 0;">
+    <button onclick="location.reload()" style="width:100%; padding:10px; cursor:pointer;">Refresh Data</button>
+</div>
+
+<div class="main-content">
+    <h1>Class Sentiment Analytics</h1>
+    
+    <div class="grid">
+        <div class="card">
+            <h3>Total Responses</h3>
+            <div id="totalCount" class="stat-num">0</div>
+        </div>
+        <div class="card">
+            <h3>Average Polarity</h3>
+            <div id="avgPol" class="stat-num">0.00</div>
+            <p>Scale: -1.0 (Negative) to +1.0 (Positive)</p>
+        </div>
+    </div>
+
+    <div class="grid" style="margin-top: 20px;">
+        <div class="card">
+            <h3>Sentiment Distribution</h3>
+            <div class="chart-container">
+                <canvas id="sentimentChart"></canvas>
+            </div>
+        </div>
+        <div class="card">
+            <h3>Recent Feedback Logs</h3>
+            <table>
+                <thead>
+                    <tr><th>Feedback</th><th>Score</th><th>Label</th></tr>
+                </thead>
+                <tbody id="logBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    let myChart;
+
+    async function loadStats() {
+        const res = await fetch('/admin_stats');
+        const data = await res.json();
+        
+        document.getElementById('totalCount').innerText = data.stats.total;
+        document.getElementById('avgPol').innerText = data.stats.avg_pol.toFixed(2);
+
+        // Process data for Chart
+        const pos = data.feedback.filter(f => f.sentiment_label === 'Positive').length;
+        const neg = data.feedback.filter(f => f.sentiment_label === 'Negative').length;
+        const neu = data.feedback.filter(f => f.sentiment_label === 'Neutral').length;
+
+        updateChart(pos, neu, neg);
+
+        // Update Table
+        document.getElementById('logBody').innerHTML = data.feedback.slice(0, 10).map(f => `
+            <tr>
+                <td>${f.feedback_text.substring(0, 50)}...</td>
+                <td>${f.polarity.toFixed(2)}</td>
+                <td><span class="badge ${f.sentiment_label === 'Positive' ? 'pos' : 'neg'}">${f.sentiment_label}</span></td>
+            </tr>
+        `).join('');
+    }
+
+    function updateChart(pos, neu, neg) {
+        const ctx = document.getElementById('sentimentChart').getContext('2d');
+        if (myChart) myChart.destroy();
+        myChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Positive', 'Neutral', 'Negative'],
+                datasets: [{
+                    data: [pos, neu, neg],
+                    backgroundColor: ['#10b981', '#94a3b8', '#ef4444']
+                }]
+            },
+            options: { maintainAspectRatio: false }
+        });
+    }
+
+    loadStats();
+    // Auto-refresh every 30 seconds
+    setInterval(loadStats, 30000);
+</script>
+
+</body>
+</html>
