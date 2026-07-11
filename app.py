@@ -25,10 +25,6 @@ DB_PORT = os.environ.get('DB_PORT', '5432')
 print(f"DB config loaded -> host='{DB_HOST}' port={DB_PORT} db='{DB_NAME}' user='{DB_USER}' pass_set={'yes' if DB_PASS else 'NO'}")
 
 # Port the FLASK app itself listens on (not the database port).
-# Reads from env var PORT if set (useful for hosting platforms / containers),
-# otherwise falls back to 8507. This means you never have to hunt for a
-# hardcoded value again — set PORT=8507 in your environment if you want
-# to force it, or just check the terminal log for whatever it picked.
 APP_PORT = int(os.environ.get('PORT', 8507))
 
 
@@ -62,8 +58,7 @@ def get_db_connection():
 
 
 def init_db():
-    """Create the feedback table if it doesn't already exist.
-    This runs once at startup so you never get 'relation does not exist' errors."""
+    """Create the feedback table if it doesn't already exist."""
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("""
@@ -82,6 +77,10 @@ def init_db():
     print("Database ready: presentation_feedback table checked/created.")
 
 
+# NOTE: '/' must be registered, or the site root 404s and nothing routes
+# to index.html. '/index.html' is kept too in case anything already links
+# to that exact path.
+@app.route('/')
 @app.route('/index.html')
 def index():
     return render_template('index.html')
@@ -151,16 +150,11 @@ def admin_stats():
             conn.close()
 
 
-# Under Passenger, this file is imported (not executed as __main__), so
-# app.run() below never fires — Passenger handles the actual serving/port.
-# We still want the table to exist, so initialize it at import time too.
 try:
     init_db()
 except Exception as e:
     print(f"WARNING: could not initialize database at startup: {e}")
 
 if __name__ == "__main__":
-    # This block only runs if you launch with `python app.py` directly
-    # (e.g. local dev, or the Docker path) — NOT under Passenger.
     print(f"Starting Flask app on port {APP_PORT} (set the PORT env var to override)")
     app.run(host="0.0.0.0", port=APP_PORT)
