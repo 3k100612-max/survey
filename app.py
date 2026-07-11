@@ -86,4 +86,4 @@ def admin_stats():
 
 if __name__ == "__main__":
     # CRITICAL: Must be 0.0.0.0 to be reachable outside the container
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=8507)
