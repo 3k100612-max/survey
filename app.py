@@ -8,6 +8,8 @@ from flask import Flask, render_template, request, jsonify, send_file, Response
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
 from transformers import pipeline
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.decomposition import LatentDirichletAllocation
 
 # Passenger (cPanel/Plesk/CloudPanel) imports this file directly and does
 # NOT read docker-compose's `env_file: .env` — that only applies when
@@ -199,6 +201,75 @@ def analyze_sentiment(text):
     }
 
 
+def run_lda_topics(texts, n_topics=5, n_top_words=8, random_state=42):
+    """Fit a Latent Dirichlet Allocation topic model over all feedback text
+    and return:
+      - topics: list of {"topic_id": i, "top_words": [...]}, one entry per
+        discovered topic, described by its highest-weighted words
+      - assignments: the dominant topic_id for each input text, in the same
+        order as `texts`
+
+    Unlike the per-submission sentiment/key-phrase analysis, LDA needs the
+    *whole corpus* at once — a single piece of feedback has no "topics" on
+    its own, only relative to patterns across all the other feedback. So
+    this is meant to be run on-demand (e.g. from an admin dashboard) rather
+    than per-submission, and results will shift as more feedback comes in.
+
+    LDA models documents as mixtures of topics and topics as distributions
+    over words, using raw word COUNTS (not TF-IDF) — this matters because
+    LDA's underlying generative model assumes counts, so a CountVectorizer
+    is used here rather than a TF-IDF vectorizer.
+    """
+    if len(texts) < 2:
+        return {
+            "topics": [],
+            "assignments": [None] * len(texts),
+            "note": "Not enough feedback yet to model topics (need at least 2 submissions).",
+        }
+
+    # Can't ask for more topics than there are documents.
+    n_topics = max(1, min(n_topics, len(texts)))
+
+    vectorizer = CountVectorizer(
+        stop_words="english",
+        max_df=0.95,  # drop words in >95% of docs — too generic to define a topic
+        min_df=1,     # keep everything else; small corpora can't afford a higher floor
+    )
+    try:
+        doc_term_matrix = vectorizer.fit_transform(texts)
+    except ValueError:
+        doc_term_matrix = None
+
+    if doc_term_matrix is None or doc_term_matrix.shape[1] == 0:
+        # Happens when there's too little distinct vocabulary left after
+        # stopword removal (e.g. only a couple of very short submissions).
+        return {
+            "topics": [],
+            "assignments": [None] * len(texts),
+            "note": "Not enough distinct vocabulary yet to model topics.",
+        }
+
+    lda = LatentDirichletAllocation(
+        n_components=n_topics,
+        random_state=random_state,
+        learning_method="batch",
+    )
+    doc_topic_dist = lda.fit_transform(doc_term_matrix)
+
+    feature_names = vectorizer.get_feature_names_out()
+    topics = []
+    for topic_id, topic_weights in enumerate(lda.components_):
+        top_indices = topic_weights.argsort()[::-1][:n_top_words]
+        top_words = [feature_names[i] for i in top_indices]
+        topics.append({"topic_id": topic_id, "top_words": top_words})
+
+    # Each document's dominant topic = whichever topic it has the highest
+    # mixture weight for.
+    assignments = doc_topic_dist.argmax(axis=1).tolist()
+
+    return {"topics": topics, "assignments": assignments, "note": None}
+
+
 def get_db_connection():
     """Retry logic to prevent crash if DB is still booting.
     Uses a short connect_timeout per attempt so a bad host fails fast
@@ -360,6 +431,64 @@ def admin_stats():
     finally:
         if conn:
             conn.close()
+
+
+@app.route('/admin_topics')
+def admin_topics():
+    """Discover topic clusters across ALL feedback using LDA and report,
+    for each topic, its defining top words plus which feedback rows fall
+    under it. Computed fresh on every call (not cached/stored), so results
+    always reflect the current full set of feedback — the tradeoff is that
+    topic groupings can shift as new feedback comes in, since LDA re-fits
+    the whole corpus each time rather than incrementally updating.
+
+    Query params:
+      n_topics    - how many topics to discover (default 5, capped at the
+                    number of feedback rows available)
+      n_top_words - how many top words to show per topic (default 8)
+    """
+    n_topics = request.args.get('n_topics', default=5, type=int)
+    n_top_words = request.args.get('n_top_words', default=8, type=int)
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT id, feedback_text, sentiment_label, created_at FROM presentation_feedback ORDER BY created_at DESC")
+        rows = cur.fetchall()
+        cur.close()
+    except Exception as e:
+        print(f"DB READ ERROR (topics): {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
+
+    texts = [row["feedback_text"] for row in rows]
+
+    try:
+        result = run_lda_topics(texts, n_topics=n_topics, n_top_words=n_top_words)
+    except Exception as e:
+        print(f"LDA TOPIC MODELING ERROR: {e}")
+        return jsonify({"error": f"Could not model topics: {e}"}), 500
+
+    # Pair each feedback row with the topic it was assigned to, and group
+    # rows under their topic for convenient display.
+    topics_by_id = {t["topic_id"]: {**t, "feedback": []} for t in result["topics"]}
+    for row, topic_id in zip(rows, result["assignments"]):
+        if topic_id is not None and topic_id in topics_by_id:
+            topics_by_id[topic_id]["feedback"].append({
+                "id": row["id"],
+                "feedback_text": row["feedback_text"],
+                "sentiment_label": row["sentiment_label"],
+                "created_at": row["created_at"].strftime("%Y-%m-%d %H:%M:%S") if row["created_at"] else None,
+            })
+
+    return jsonify({
+        "topics": list(topics_by_id.values()),
+        "total_feedback": len(rows),
+        "note": result["note"],
+    })
 
 
 @app.route('/admin_export')
