@@ -7,7 +7,7 @@
 <style>
     body {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        max-width: 700px;
+        max-width: 720px;
         margin: 60px auto;
         padding: 0 20px;
         background: #f7f7f9;
@@ -46,11 +46,25 @@
     }
     #result.success { background: #dcfce7; color: #166534; display: block; }
     #result.error { background: #fee2e2; color: #991b1b; display: block; }
+    #result .meta {
+        margin-top: 8px;
+        font-size: 0.85rem;
+        opacity: 0.85;
+    }
+    #result .phrase {
+        display: inline-block;
+        background: rgba(255,255,255,0.6);
+        border-radius: 999px;
+        padding: 2px 8px;
+        margin: 2px 4px 2px 0;
+        font-size: 0.75rem;
+    }
 
     #stats {
         display: flex;
         gap: 16px;
         margin: 16px 0;
+        flex-wrap: wrap;
     }
     .stat-card {
         background: white;
@@ -58,34 +72,63 @@
         padding: 14px 18px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         flex: 1;
+        min-width: 100px;
     }
     .stat-card .value { font-size: 1.6rem; font-weight: 600; }
     .stat-card .label { color: #666; font-size: 0.8rem; }
 
-    table {
-        width: 100%;
-        border-collapse: collapse;
+    .feedback-card {
         background: white;
         border-radius: 8px;
-        overflow: hidden;
+        padding: 14px 18px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        margin-bottom: 12px;
     }
-    th, td {
-        text-align: left;
-        padding: 10px 14px;
-        border-bottom: 1px solid #eee;
-        font-size: 0.9rem;
+    .feedback-card .text { font-size: 0.95rem; margin-bottom: 8px; }
+    .feedback-card .row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        font-size: 0.78rem;
+        color: #666;
     }
-    th { background: #f1f5f9; }
     .tag {
         padding: 2px 8px;
         border-radius: 999px;
-        font-size: 0.75rem;
+        font-size: 0.72rem;
         font-weight: 600;
     }
-    .Positive { background: #dcfce7; color: #166534; }
-    .Negative { background: #fee2e2; color: #991b1b; }
-    .Neutral  { background: #f1f5f9; color: #475569; }
+    .tag.VeryPositive, .tag.Positive { background: #dcfce7; color: #166534; }
+    .tag.VeryNegative, .tag.Negative { background: #fee2e2; color: #991b1b; }
+    .tag.Neutral  { background: #f1f5f9; color: #475569; }
+    .subj-tag {
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 0.72rem;
+        background: #ede9fe;
+        color: #5b21b6;
+    }
+    .intensity-bar-track {
+        width: 60px;
+        height: 6px;
+        background: #eee;
+        border-radius: 3px;
+        overflow: hidden;
+        display: inline-block;
+        vertical-align: middle;
+    }
+    .intensity-bar-fill {
+        height: 100%;
+        background: #2563eb;
+    }
+    .phrase-tag {
+        background: #f1f5f9;
+        border-radius: 999px;
+        padding: 2px 8px;
+        font-size: 0.72rem;
+        color: #334155;
+    }
     #listError {
         display: none;
         background: #fee2e2;
@@ -110,23 +153,16 @@
 <h2>What others said</h2>
 <div id="listError"></div>
 <div id="stats"></div>
-<table id="feedbackTable">
-    <thead>
-        <tr>
-            <th>Feedback</th>
-            <th>Sentiment</th>
-            <th>Submitted</th>
-        </tr>
-    </thead>
-    <tbody id="tableBody">
-        <tr><td colspan="3">Loading...</td></tr>
-    </tbody>
-</table>
+<div id="feedbackList"></div>
 
 <script>
 const submitBtn = document.getElementById('submitBtn');
 const feedbackText = document.getElementById('feedbackText');
 const result = document.getElementById('result');
+
+function sentimentClass(label) {
+    return label.replace(/\s+/g, '');
+}
 
 submitBtn.addEventListener('click', async () => {
     const text = feedbackText.value.trim();
@@ -156,7 +192,17 @@ submitBtn.addEventListener('click', async () => {
             throw new Error(data.error || `Server responded with ${response.status}`);
         }
 
-        result.textContent = `Thanks! Sentiment detected: ${data.label} (polarity: ${data.polarity})`;
+        const phrasesHtml = (data.key_phrases && data.key_phrases.length)
+            ? data.key_phrases.map(p => `<span class="phrase">${escapeHtml(p)}</span>`).join('')
+            : '';
+
+        result.innerHTML = `
+            Thanks! Sentiment detected: <strong>${escapeHtml(data.label)}</strong> (polarity: ${data.polarity})
+            <div class="meta">
+                ${escapeHtml(data.subjectivity_label)} · intensity ${Math.round(data.intensity * 100)}%
+                ${phrasesHtml ? '<br>' + phrasesHtml : ''}
+            </div>
+        `;
         result.className = 'success';
         result.style.display = 'block';
         feedbackText.value = '';
@@ -177,7 +223,7 @@ submitBtn.addEventListener('click', async () => {
 async function loadFeedbackList() {
     const errorEl = document.getElementById('listError');
     const statsEl = document.getElementById('stats');
-    const tbody = document.getElementById('tableBody');
+    const listEl = document.getElementById('feedbackList');
 
     try {
         const response = await fetch('/admin_stats');
@@ -191,6 +237,10 @@ async function loadFeedbackList() {
 
         const total = data.stats.total || 0;
         const avgPol = data.stats.avg_pol !== null ? Number(data.stats.avg_pol).toFixed(2) : '0.00';
+        const avgSubj = data.stats.avg_subj !== null ? Number(data.stats.avg_subj).toFixed(2) : '0.00';
+        const pos = data.stats.positive_count || 0;
+        const neu = data.stats.neutral_count || 0;
+        const neg = data.stats.negative_count || 0;
 
         statsEl.innerHTML = `
             <div class="stat-card">
@@ -199,28 +249,56 @@ async function loadFeedbackList() {
             </div>
             <div class="stat-card">
                 <div class="value">${avgPol}</div>
-                <div class="label">Average Polarity</div>
+                <div class="label">Avg Polarity</div>
+            </div>
+            <div class="stat-card">
+                <div class="value">${avgSubj}</div>
+                <div class="label">Avg Subjectivity</div>
+            </div>
+            <div class="stat-card">
+                <div class="value">${pos} / ${neu} / ${neg}</div>
+                <div class="label">Pos / Neutral / Neg</div>
             </div>
         `;
 
         if (!data.feedback || data.feedback.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="3">No feedback yet — be the first!</td></tr>';
+            listEl.innerHTML = '<p>No feedback yet — be the first!</p>';
             return;
         }
 
-        tbody.innerHTML = data.feedback.map(row => `
-            <tr>
-                <td>${escapeHtml(row.feedback_text)}</td>
-                <td><span class="tag ${row.sentiment_label}">${row.sentiment_label}</span></td>
-                <td>${new Date(row.created_at).toLocaleString()}</td>
-            </tr>
-        `).join('');
+        listEl.innerHTML = data.feedback.map(row => {
+            const cls = sentimentClass(row.sentiment_label || 'Neutral');
+            const intensityPct = row.intensity !== null && row.intensity !== undefined
+                ? Math.round(row.intensity * 100) : 0;
+            const phrases = row.key_phrases
+                ? row.key_phrases.split(',').map(p => p.trim()).filter(Boolean)
+                : [];
+            const phrasesHtml = phrases.map(p => `<span class="phrase-tag">${escapeHtml(p)}</span>`).join('');
+
+            return `
+                <div class="feedback-card">
+                    <div class="text">${escapeHtml(row.feedback_text)}</div>
+                    <div class="row">
+                        <span class="tag ${cls}">${escapeHtml(row.sentiment_label || 'Neutral')}</span>
+                        ${row.subjectivity_label ? `<span class="subj-tag">${escapeHtml(row.subjectivity_label)}</span>` : ''}
+                        <span>
+                            intensity
+                            <span class="intensity-bar-track">
+                                <span class="intensity-bar-fill" style="width:${intensityPct}%"></span>
+                            </span>
+                        </span>
+                        <span>${new Date(row.created_at).toLocaleString()}</span>
+                    </div>
+                    ${phrasesHtml ? `<div class="row" style="margin-top:6px;">${phrasesHtml}</div>` : ''}
+                </div>
+            `;
+        }).join('');
 
     } catch (err) {
         console.error('Failed to load feedback list:', err);
         errorEl.textContent = `Failed to load feedback list: ${err.message}`;
         errorEl.style.display = 'block';
-        tbody.innerHTML = '<tr><td colspan="3">Failed to load.</td></tr>';
+        listEl.innerHTML = '';
     }
 }
 
