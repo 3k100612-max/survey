@@ -8,11 +8,10 @@ from psycopg2.extras import RealDictCursor
 app = Flask(__name__)
 
 # --- DATABASE CONFIGURATION VIA ENVIRONMENT VARIABLES ---
-DB_NAME = os.getenv("DB_NAME", "survey_db")
-DB_USER = os.getenv("DB_USER", "admin")
-DB_PASS = os.getenv("DB_PASS", "password123")
-DB_HOST = os.getenv("DB_HOST", "db") 
-DB_PORT = os.getenv("DB_PORT", "5432")
+DB_USER = os.environ.get('DB_USER')
+DB_PASS = os.environ.get('DB_PASS')
+DB_HOST = os.environ.get('DB_HOST')
+DB_NAME = os.environ.get('DB_NAME')
 
 def get_db_connection():
     """Retry logic to prevent crash if DB is still booting"""
