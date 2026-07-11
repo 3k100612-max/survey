@@ -12,10 +12,20 @@ DB_USER = os.environ.get('DB_USER')
 DB_PASS = os.environ.get('DB_PASS')
 DB_HOST = os.environ.get('DB_HOST')
 DB_NAME = os.environ.get('DB_NAME')
+DB_PORT = os.environ.get('DB_PORT', '5432')
+
+# Port the FLASK app itself listens on (not the database port).
+# Reads from env var PORT if set (useful for hosting platforms / containers),
+# otherwise falls back to 8507. This means you never have to hunt for a
+# hardcoded value again — set PORT=8507 in your environment if you want
+# to force it, or just check the terminal log for whatever it picked.
+APP_PORT = int(os.environ.get('PORT', 8507))
+
 
 def get_db_connection():
-    """Retry logic to prevent crash if DB is still booting"""
+    """Retry logic to prevent crash if DB is still booting."""
     retries = 10
+    last_error = None
     while retries > 0:
         try:
             conn = psycopg2.connect(
@@ -23,52 +33,90 @@ def get_db_connection():
                 user=DB_USER,
                 password=DB_PASS,
                 host=DB_HOST,
+                port=DB_PORT,
             )
             return conn
         except psycopg2.OperationalError as e:
+            last_error = e
             retries -= 1
-            print(f"Waiting for database... {retries} attempts left")
+            print(f"Waiting for database... {retries} attempts left ({e})")
             time.sleep(3)
-    raise Exception("Could not connect to PostgreSQL.")
+    raise Exception(f"Could not connect to PostgreSQL. Last error: {last_error}")
+
+
+def init_db():
+    """Create the feedback table if it doesn't already exist.
+    This runs once at startup so you never get 'relation does not exist' errors."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS presentation_feedback (
+            id SERIAL PRIMARY KEY,
+            feedback_text TEXT NOT NULL,
+            polarity REAL,
+            subjectivity REAL,
+            sentiment_label TEXT,
+            created_at TIMESTAMP DEFAULT NOW()
+        );
+    """)
+    conn.commit()
+    cur.close()
+    conn.close()
+    print("Database ready: presentation_feedback table checked/created.")
+
 
 @app.route('/')
 def index():
     return render_template('index.html')
 
+
 @app.route('/admin')
 def admin():
     return render_template('admin.html')
 
+
 @app.route('/submit_feedback', methods=['POST'])
 def submit_feedback():
-    data = request.json
+    data = request.get_json(silent=True) or {}
     text = data.get('feedback', '').strip()
+
     if not text:
         return jsonify({"error": "Empty feedback"}), 400
 
     blob = TextBlob(text)
     pol = blob.sentiment.polarity
     subj = blob.sentiment.subjectivity
-    label = "Neutral"
-    if pol > 0.1: label = "Positive"
-    elif pol < -0.1: label = "Negative"
 
+    label = "Neutral"
+    if pol > 0.1:
+        label = "Positive"
+    elif pol < -0.1:
+        label = "Negative"
+
+    conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO presentation_feedback (feedback_text, polarity, subjectivity, sentiment_label) VALUES (%s, %s, %s, %s)",
+            """INSERT INTO presentation_feedback
+               (feedback_text, polarity, subjectivity, sentiment_label)
+               VALUES (%s, %s, %s, %s)""",
             (text, pol, subj, label)
         )
         conn.commit()
         cur.close()
-        conn.close()
         return jsonify({"status": "success", "polarity": round(pol, 2), "label": label})
     except Exception as e:
+        print(f"DB INSERT ERROR: {e}")
         return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
+
 
 @app.route('/admin_stats')
 def admin_stats():
+    conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -77,11 +125,24 @@ def admin_stats():
         cur.execute("SELECT AVG(polarity) as avg_pol, COUNT(*) as total FROM presentation_feedback")
         stats = cur.fetchone()
         cur.close()
-        conn.close()
         return jsonify({"feedback": rows, "stats": stats or {"avg_pol": 0, "total": 0}})
     except Exception as e:
+        print(f"DB READ ERROR: {e}")
         return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
+
 
 if __name__ == "__main__":
-    # CRITICAL: Must be 0.0.0.0 to be reachable outside the container
-    app.run(host="0.0.0.0", port=8507)
+    # Make sure the table exists before we start serving requests.
+    try:
+        init_db()
+    except Exception as e:
+        print(f"WARNING: could not initialize database at startup: {e}")
+
+    # CRITICAL: Must be 0.0.0.0 to be reachable outside the container.
+    # The actual port used is printed below and in Flask's own startup log —
+    # match your frontend / browser URL to THAT number, not a number you assumed.
+    print(f"Starting Flask app on port {APP_PORT} (set the PORT env var to override)")
+    app.run(host="0.0.0.0", port=APP_PORT)
