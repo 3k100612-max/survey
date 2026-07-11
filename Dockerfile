@@ -14,8 +14,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Set environment variables for Flask
+# IMPORTANT: this must match the host port in docker-compose.yml's
+# "ports:" mapping below, or you'll get bad gateway / connection refused,
+# since Docker will forward to a port nothing is listening on.
 ENV FLASK_APP=app.py
-ENV FLASK_RUN_PORT=8506
+ENV FLASK_RUN_PORT=8507
 ENV FLASK_RUN_HOST=0.0.0.0
 
 EXPOSE 8507
