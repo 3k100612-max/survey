@@ -22,6 +22,8 @@ DB_HOST = os.environ.get('DB_HOST')
 DB_NAME = os.environ.get('DB_NAME')
 DB_PORT = os.environ.get('DB_PORT', '5432')
 
+print(f"DB config loaded -> host='{DB_HOST}' port={DB_PORT} db='{DB_NAME}' user='{DB_USER}' pass_set={'yes' if DB_PASS else 'NO'}")
+
 # Port the FLASK app itself listens on (not the database port).
 # Reads from env var PORT if set (useful for hosting platforms / containers),
 # otherwise falls back to 8507. This means you never have to hunt for a
@@ -31,8 +33,11 @@ APP_PORT = int(os.environ.get('PORT', 8507))
 
 
 def get_db_connection():
-    """Retry logic to prevent crash if DB is still booting."""
-    retries = 10
+    """Retry logic to prevent crash if DB is still booting.
+    Uses a short connect_timeout per attempt so a bad host fails fast
+    instead of hanging (a slow/hanging connect is a common cause of
+    502s from an upstream proxy)."""
+    retries = 5
     last_error = None
     while retries > 0:
         try:
@@ -42,14 +47,18 @@ def get_db_connection():
                 password=DB_PASS,
                 host=DB_HOST,
                 port=DB_PORT,
+                connect_timeout=5,
             )
             return conn
         except psycopg2.OperationalError as e:
             last_error = e
             retries -= 1
-            print(f"Waiting for database... {retries} attempts left ({e})")
-            time.sleep(3)
-    raise Exception(f"Could not connect to PostgreSQL. Last error: {last_error}")
+            print(f"Waiting for database at host='{DB_HOST}' port={DB_PORT}... {retries} attempts left ({e})")
+            time.sleep(2)
+    raise Exception(
+        f"Could not connect to PostgreSQL at host='{DB_HOST}' port={DB_PORT} "
+        f"db='{DB_NAME}' user='{DB_USER}'. Last error: {last_error}"
+    )
 
 
 def init_db():
