@@ -3,7 +3,6 @@ version: '3.8'
 services:
   db:
     image: postgres:15
-    container_name: sentiment_db
     environment:
       POSTGRES_DB: ${DB_NAME}
       POSTGRES_USER: ${DB_USER}
@@ -12,17 +11,14 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
-      - "${DB_PORT}:5432"
+      - "5432:5432"
 
   web:
     build: .
-    container_name: flask_app
     ports:
       - "5000:5000"
     env_file:
       - .env
     depends_on:
       - db
-
-volumes:
-  postgres_data:
+    restart: always  # Automatically restarts if it fails the first time
