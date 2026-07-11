@@ -4,6 +4,14 @@ import psycopg2
 from flask import Flask, render_template, request, jsonify
 from textblob import TextBlob
 from psycopg2.extras import RealDictCursor
+from dotenv import load_dotenv
+
+# Passenger (cPanel/Plesk/CloudPanel) imports this file directly and does
+# NOT read docker-compose's `env_file: .env` — that only applies when
+# running via `docker compose up`. So we load .env explicitly here to make
+# sure DB_USER/DB_PASS/DB_HOST/DB_NAME are actually populated no matter how
+# the app is launched.
+load_dotenv()
 
 app = Flask(__name__)
 
@@ -134,15 +142,16 @@ def admin_stats():
             conn.close()
 
 
-if __name__ == "__main__":
-    # Make sure the table exists before we start serving requests.
-    try:
-        init_db()
-    except Exception as e:
-        print(f"WARNING: could not initialize database at startup: {e}")
+# Under Passenger, this file is imported (not executed as __main__), so
+# app.run() below never fires — Passenger handles the actual serving/port.
+# We still want the table to exist, so initialize it at import time too.
+try:
+    init_db()
+except Exception as e:
+    print(f"WARNING: could not initialize database at startup: {e}")
 
-    # CRITICAL: Must be 0.0.0.0 to be reachable outside the container.
-    # The actual port used is printed below and in Flask's own startup log —
-    # match your frontend / browser URL to THAT number, not a number you assumed.
+if __name__ == "__main__":
+    # This block only runs if you launch with `python app.py` directly
+    # (e.g. local dev, or the Docker path) — NOT under Passenger.
     print(f"Starting Flask app on port {APP_PORT} (set the PORT env var to override)")
     app.run(host="0.0.0.0", port=APP_PORT)
