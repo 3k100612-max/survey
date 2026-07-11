@@ -132,6 +132,36 @@ def load_sentiment_pipeline():
     print("Sentiment model loaded.")
 
 
+# Phrases that signal "something is missing / should be improved" without
+# using any explicitly negative words — e.g. "need more expertise",
+# "could use more visuals", "lacking detail". General-purpose sentiment
+# models (trained mostly on tweets/reviews with explicit emotional words)
+# routinely score these as Positive, because there's no negative-sounding
+# word for them to latch onto. This is a feedback-semantics gap, not
+# something a sentiment model can fix on its own — so we catch it with a
+# rule-based override instead of trusting the raw model here.
+_CONSTRUCTIVE_REQUEST_PATTERNS = [
+    r"\bneed(?:s|ed)?\s+more\b",
+    r"\bcould\s+(?:use|have)\s+more\b",
+    r"\bwould\s+(?:like|love|prefer)\s+more\b",
+    r"\bwish(?:ed)?\s+(?:there\s+was|it\s+had)\b",
+    r"\black(?:s|ed|ing)?\s+(?:of\s+)?\b",
+    r"\bmissing\b",
+    r"\bnot\s+enough\b",
+    r"\btoo\s+(?:little|few|short|brief)\b",
+    r"\bmore\s+\w+\s+(?:needed|required)\b",
+]
+_CONSTRUCTIVE_REQUEST_RE = re.compile(
+    "|".join(_CONSTRUCTIVE_REQUEST_PATTERNS), re.IGNORECASE
+)
+
+
+def is_constructive_request(text):
+    """True if the text reads as an implicit ask/gap ('need more X') rather
+    than an explicit positive or negative statement."""
+    return bool(_CONSTRUCTIVE_REQUEST_RE.search(text))
+
+
 def analyze_sentiment(text):
     """Run the Hugging Face sentiment pipeline and return a dict shaped
     the same way the old TextBlob-based version did, so the rest of the
@@ -149,6 +179,12 @@ def analyze_sentiment(text):
     subjectivity = round(1 - neu, 4)
     top_label = max(scores, key=scores.get)
     confidence = round(scores[top_label], 4)
+
+    # Override: "need more X" / "lacking X" style feedback should never be
+    # reported as Positive, even if the raw model leans that way — cap it
+    # at Neutral so it doesn't misleadingly count toward positive stats.
+    if is_constructive_request(text) and polarity > 0:
+        polarity = min(polarity, 0.0)
 
     return {
         "polarity": polarity,
