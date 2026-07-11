@@ -53,6 +53,11 @@ HF_SENTIMENT_MODEL = os.environ.get(
     "HF_SENTIMENT_MODEL", "cardiffnlp/twitter-roberta-base-sentiment-latest"
 )
 
+# Hugging Face model for Named Entity Recognition — pulls out mentions of
+# people, organizations, locations, etc. from feedback text (e.g. a
+# presenter's name, a company or tool being discussed).
+HF_NER_MODEL = os.environ.get("HF_NER_MODEL", "dslim/bert-base-NER")
+
 # Basic stopword list for lightweight key-phrase extraction (no external
 # corpus download required, unlike TextBlob's noun_phrases()).
 _STOPWORDS = {
@@ -201,6 +206,73 @@ def analyze_sentiment(text):
     }
 
 
+# --- HUGGING FACE NER PIPELINE (loaded once at startup) ---
+# Same reasoning as the sentiment pipeline above: load once at process
+# startup, never per-request.
+_ner_pipeline = None
+
+# Human-readable labels for the model's raw entity tags.
+_NER_LABELS = {
+    "PER": "Person",
+    "ORG": "Organization",
+    "LOC": "Location",
+    "MISC": "Misc",
+}
+
+
+def load_ner_pipeline():
+    global _ner_pipeline
+    print(f"Loading Hugging Face NER model '{HF_NER_MODEL}'...")
+    _ner_pipeline = pipeline(
+        "ner",
+        model=HF_NER_MODEL,
+        # "simple" merges sub-word tokens back into whole entity spans —
+        # e.g. the tokens "Jo" + "##hnson" become one entity "Johnson"
+        # instead of two fragments.
+        aggregation_strategy="simple",
+    )
+    print("NER model loaded.")
+
+
+def extract_entities(text, limit=10, min_score=0.5):
+    """Run the Hugging Face NER pipeline and return a deduplicated list of
+    {"text": ..., "type": ...} for named entities mentioned in the
+    feedback — e.g. a presenter's name, a company, a tool.
+
+    Best-effort by design: returns an empty list rather than raising if
+    the model isn't loaded or extraction fails, so a NER hiccup never
+    blocks a feedback submission from being saved (unlike sentiment
+    analysis, which is central enough to the app that its failures should
+    surface as an error instead of being silently swallowed).
+    """
+    if _ner_pipeline is None:
+        return []
+    try:
+        raw = _ner_pipeline(text)
+        seen = set()
+        entities = []
+        for ent in raw:
+            label = ent.get("entity_group", "MISC")
+            span = ent.get("word", "").strip()
+            score = ent.get("score", 0.0)
+            # Low-confidence detections are common on short, informal text
+            # (e.g. a lowercase word getting flagged as a name) — filter
+            # them out rather than surfacing noisy guesses.
+            if not span or score < min_score:
+                continue
+            key = (span.lower(), label)
+            if key in seen:
+                continue
+            seen.add(key)
+            entities.append({"text": span, "type": _NER_LABELS.get(label, label)})
+            if len(entities) >= limit:
+                break
+        return entities
+    except Exception as e:
+        print(f"NER extraction failed (non-fatal): {e}")
+        return []
+
+
 def run_lda_topics(texts, n_topics=5, n_top_words=8, random_state=42):
     """Fit a Latent Dirichlet Allocation topic model over all feedback text
     and return:
@@ -321,6 +393,7 @@ def init_db():
     cur.execute("ALTER TABLE presentation_feedback ADD COLUMN IF NOT EXISTS intensity REAL;")
     cur.execute("ALTER TABLE presentation_feedback ADD COLUMN IF NOT EXISTS key_phrases TEXT;")
     cur.execute("ALTER TABLE presentation_feedback ADD COLUMN IF NOT EXISTS word_count INTEGER;")
+    cur.execute("ALTER TABLE presentation_feedback ADD COLUMN IF NOT EXISTS entities TEXT;")
     conn.commit()
     cur.close()
     conn.close()
@@ -360,6 +433,12 @@ def submit_feedback():
         print(f"SENTIMENT ANALYSIS ERROR: {e}")
         return jsonify({"error": f"Could not analyze feedback: {e}"}), 500
 
+    # NER is best-effort (see extract_entities) — it never raises, so no
+    # try/except needed here. A submission still saves successfully even
+    # if the NER model failed to load or errors on this particular text.
+    entities = extract_entities(text)
+    entities_str = ", ".join(f"{e['type']}: {e['text']}" for e in entities) if entities else None
+
     conn = None
     try:
         conn = get_db_connection()
@@ -367,8 +446,8 @@ def submit_feedback():
         cur.execute(
             """INSERT INTO presentation_feedback
                (feedback_text, polarity, subjectivity, sentiment_label,
-                subjectivity_label, intensity, key_phrases, word_count)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+                subjectivity_label, intensity, key_phrases, word_count, entities)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             (
                 text,
                 analysis["polarity"],
@@ -378,6 +457,7 @@ def submit_feedback():
                 analysis["intensity"],
                 ", ".join(analysis["key_phrases"]) if analysis["key_phrases"] else None,
                 analysis["word_count"],
+                entities_str,
             )
         )
         conn.commit()
@@ -389,6 +469,7 @@ def submit_feedback():
             "subjectivity_label": analysis["subjectivity_label"],
             "intensity": analysis["intensity"],
             "key_phrases": analysis["key_phrases"],
+            "entities": entities,
         })
     except Exception as e:
         print(f"DB INSERT ERROR: {e}")
@@ -513,7 +594,8 @@ def admin_export():
 
     headers = [
         "ID", "Feedback", "Sentiment", "Polarity", "Subjectivity Label",
-        "Subjectivity Score", "Intensity", "Key Phrases", "Word Count", "Submitted At"
+        "Subjectivity Score", "Intensity", "Key Phrases", "Word Count",
+        "Entities", "Submitted At"
     ]
 
     output = io.StringIO()
@@ -532,6 +614,7 @@ def admin_export():
             row.get("intensity"),
             row.get("key_phrases"),
             row.get("word_count"),
+            row.get("entities"),
             created_at.strftime("%Y-%m-%d %H:%M:%S") if created_at else None,
         ])
 
@@ -551,6 +634,11 @@ try:
     load_sentiment_pipeline()
 except Exception as e:
     print(f"WARNING: could not load sentiment model at startup: {e}")
+
+try:
+    load_ner_pipeline()
+except Exception as e:
+    print(f"WARNING: could not load NER model at startup: {e}")
 
 try:
     init_db()
