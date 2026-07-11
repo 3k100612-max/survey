@@ -3,55 +3,101 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Feedback Admin</title>
+<title>Presentation Feedback</title>
 <style>
     body {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        max-width: 1000px;
-        margin: 40px auto;
+        max-width: 720px;
+        margin: 60px auto;
         padding: 0 20px;
         background: #f7f7f9;
         color: #222;
     }
-    h1 { font-size: 1.6rem; }
+    h1 { font-size: 1.6rem; margin-bottom: 4px; }
+    h2 { font-size: 1.2rem; margin-top: 48px; margin-bottom: 12px; }
+    p.subtitle { color: #666; margin-top: 0; }
+    textarea {
+        width: 100%;
+        min-height: 120px;
+        padding: 12px;
+        font-size: 1rem;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        box-sizing: border-box;
+        resize: vertical;
+    }
+    button {
+        margin-top: 12px;
+        padding: 10px 20px;
+        font-size: 1rem;
+        background: #2563eb;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+    }
+    button:disabled { background: #93c5fd; cursor: not-allowed; }
+    button:hover:not(:disabled) { background: #1d4ed8; }
+    #result {
+        margin-top: 20px;
+        padding: 14px;
+        border-radius: 8px;
+        display: none;
+    }
+    #result.success { background: #dcfce7; color: #166534; display: block; }
+    #result.error { background: #fee2e2; color: #991b1b; display: block; }
+    #result .meta {
+        margin-top: 8px;
+        font-size: 0.85rem;
+        opacity: 0.85;
+    }
+    #result .phrase {
+        display: inline-block;
+        background: rgba(255,255,255,0.6);
+        border-radius: 999px;
+        padding: 2px 8px;
+        margin: 2px 4px 2px 0;
+        font-size: 0.75rem;
+    }
+
     #stats {
         display: flex;
         gap: 16px;
-        margin: 20px 0;
+        margin: 16px 0;
         flex-wrap: wrap;
     }
     .stat-card {
         background: white;
         border-radius: 8px;
-        padding: 16px 20px;
+        padding: 14px 18px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         flex: 1;
-        min-width: 120px;
+        min-width: 100px;
     }
-    .stat-card .value { font-size: 1.8rem; font-weight: 600; }
-    .stat-card .label { color: #666; font-size: 0.85rem; }
-    table {
-        width: 100%;
-        border-collapse: collapse;
+    .stat-card .value { font-size: 1.6rem; font-weight: 600; }
+    .stat-card .label { color: #666; font-size: 0.8rem; }
+
+    .feedback-card {
         background: white;
         border-radius: 8px;
-        overflow: hidden;
+        padding: 14px 18px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        margin-bottom: 12px;
     }
-    th, td {
-        text-align: left;
-        padding: 10px 14px;
-        border-bottom: 1px solid #eee;
-        font-size: 0.85rem;
-        vertical-align: top;
+    .feedback-card .text { font-size: 0.95rem; margin-bottom: 8px; }
+    .feedback-card .row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        font-size: 0.78rem;
+        color: #666;
     }
-    th { background: #f1f5f9; }
     .tag {
         padding: 2px 8px;
         border-radius: 999px;
         font-size: 0.72rem;
         font-weight: 600;
-        white-space: nowrap;
     }
     .tag.VeryPositive, .tag.Positive { background: #dcfce7; color: #166534; }
     .tag.VeryNegative, .tag.Negative { background: #fee2e2; color: #991b1b; }
@@ -62,7 +108,6 @@
         font-size: 0.72rem;
         background: #ede9fe;
         color: #5b21b6;
-        white-space: nowrap;
     }
     .intensity-bar-track {
         width: 60px;
@@ -78,15 +123,13 @@
         background: #2563eb;
     }
     .phrase-tag {
-        display: inline-block;
         background: #f1f5f9;
         border-radius: 999px;
         padding: 2px 8px;
-        margin: 2px;
-        font-size: 0.7rem;
+        font-size: 0.72rem;
         color: #334155;
     }
-    #error {
+    #listError {
         display: none;
         background: #fee2e2;
         color: #991b1b;
@@ -98,41 +141,89 @@
 </head>
 <body>
 
-<h1>Feedback Admin Dashboard</h1>
-<div id="error"></div>
+<h1>Presentation Feedback</h1>
+<p class="subtitle">Let us know what you thought — a sentence or two is great.</p>
+
+<textarea id="feedbackText" placeholder="Type your feedback here..."></textarea>
+<br>
+<button id="submitBtn">Submit Feedback</button>
+
+<div id="result"></div>
+
+<h2>What others said</h2>
+<div id="listError"></div>
 <div id="stats"></div>
-<table id="feedbackTable">
-    <thead>
-        <tr>
-            <th>Feedback</th>
-            <th>Sentiment</th>
-            <th>Subjectivity</th>
-            <th>Intensity</th>
-            <th>Key Phrases</th>
-            <th>Words</th>
-            <th>Submitted</th>
-        </tr>
-    </thead>
-    <tbody id="tableBody">
-        <tr><td colspan="7">Loading...</td></tr>
-    </tbody>
-</table>
+<div id="feedbackList"></div>
 
 <script>
+const submitBtn = document.getElementById('submitBtn');
+const feedbackText = document.getElementById('feedbackText');
+const result = document.getElementById('result');
+
 function sentimentClass(label) {
-    return (label || 'Neutral').replace(/\s+/g, '');
+    return label.replace(/\s+/g, '');
 }
 
-function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-}
+submitBtn.addEventListener('click', async () => {
+    const text = feedbackText.value.trim();
+    result.className = '';
+    result.style.display = 'none';
 
-async function loadStats() {
-    const errorEl = document.getElementById('error');
+    if (!text) {
+        result.textContent = 'Please enter some feedback first.';
+        result.className = 'error';
+        result.style.display = 'block';
+        return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Submitting...';
+
+    try {
+        const response = await fetch('/submit_feedback', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ feedback: text })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || `Server responded with ${response.status}`);
+        }
+
+        const phrasesHtml = (data.key_phrases && data.key_phrases.length)
+            ? data.key_phrases.map(p => `<span class="phrase">${escapeHtml(p)}</span>`).join('')
+            : '';
+
+        result.innerHTML = `
+            Thanks! Sentiment detected: <strong>${escapeHtml(data.label)}</strong> (polarity: ${data.polarity})
+            <div class="meta">
+                ${escapeHtml(data.subjectivity_label)} · intensity ${Math.round(data.intensity * 100)}%
+                ${phrasesHtml ? '<br>' + phrasesHtml : ''}
+            </div>
+        `;
+        result.className = 'success';
+        result.style.display = 'block';
+        feedbackText.value = '';
+
+        loadFeedbackList();
+
+    } catch (err) {
+        console.error('Submit failed:', err);
+        result.textContent = `Something went wrong: ${err.message}`;
+        result.className = 'error';
+        result.style.display = 'block';
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Submit Feedback';
+    }
+});
+
+async function loadFeedbackList() {
+    const errorEl = document.getElementById('listError');
     const statsEl = document.getElementById('stats');
-    const tbody = document.getElementById('tableBody');
+    const listEl = document.getElementById('feedbackList');
 
     try {
         const response = await fetch('/admin_stats');
@@ -158,62 +249,67 @@ async function loadStats() {
             </div>
             <div class="stat-card">
                 <div class="value">${avgPol}</div>
-                <div class="label">Average Polarity</div>
+                <div class="label">Avg Polarity</div>
             </div>
             <div class="stat-card">
                 <div class="value">${avgSubj}</div>
-                <div class="label">Average Subjectivity</div>
+                <div class="label">Avg Subjectivity</div>
             </div>
             <div class="stat-card">
                 <div class="value">${pos} / ${neu} / ${neg}</div>
-                <div class="label">Positive / Neutral / Negative</div>
+                <div class="label">Pos / Neutral / Neg</div>
             </div>
         `;
 
         if (!data.feedback || data.feedback.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7">No feedback yet.</td></tr>';
+            listEl.innerHTML = '<p>No feedback yet — be the first!</p>';
             return;
         }
 
-        tbody.innerHTML = data.feedback.map(row => {
-            const cls = sentimentClass(row.sentiment_label);
+        listEl.innerHTML = data.feedback.map(row => {
+            const cls = sentimentClass(row.sentiment_label || 'Neutral');
             const intensityPct = row.intensity !== null && row.intensity !== undefined
                 ? Math.round(row.intensity * 100) : 0;
             const phrases = row.key_phrases
                 ? row.key_phrases.split(',').map(p => p.trim()).filter(Boolean)
                 : [];
-            const phrasesHtml = phrases.length
-                ? phrases.map(p => `<span class="phrase-tag">${escapeHtml(p)}</span>`).join('')
-                : '<span style="color:#999;">—</span>';
+            const phrasesHtml = phrases.map(p => `<span class="phrase-tag">${escapeHtml(p)}</span>`).join('');
 
             return `
-                <tr>
-                    <td>${escapeHtml(row.feedback_text)}</td>
-                    <td><span class="tag ${cls}">${escapeHtml(row.sentiment_label || 'Neutral')}</span><br><span style="font-size:0.72rem;color:#999;">${Number(row.polarity).toFixed(2)}</span></td>
-                    <td>${row.subjectivity_label ? `<span class="subj-tag">${escapeHtml(row.subjectivity_label)}</span>` : '—'}</td>
-                    <td>
-                        <span class="intensity-bar-track">
-                            <span class="intensity-bar-fill" style="width:${intensityPct}%"></span>
+                <div class="feedback-card">
+                    <div class="text">${escapeHtml(row.feedback_text)}</div>
+                    <div class="row">
+                        <span class="tag ${cls}">${escapeHtml(row.sentiment_label || 'Neutral')}</span>
+                        ${row.subjectivity_label ? `<span class="subj-tag">${escapeHtml(row.subjectivity_label)}</span>` : ''}
+                        <span>
+                            intensity
+                            <span class="intensity-bar-track">
+                                <span class="intensity-bar-fill" style="width:${intensityPct}%"></span>
+                            </span>
                         </span>
-                        <span style="font-size:0.72rem;color:#999;"> ${intensityPct}%</span>
-                    </td>
-                    <td>${phrasesHtml}</td>
-                    <td>${row.word_count ?? '—'}</td>
-                    <td style="white-space:nowrap;">${new Date(row.created_at).toLocaleString()}</td>
-                </tr>
+                        <span>${new Date(row.created_at).toLocaleString()}</span>
+                    </div>
+                    ${phrasesHtml ? `<div class="row" style="margin-top:6px;">${phrasesHtml}</div>` : ''}
+                </div>
             `;
         }).join('');
 
     } catch (err) {
-        console.error('Failed to load admin stats:', err);
-        errorEl.textContent = `Failed to load data: ${err.message}`;
+        console.error('Failed to load feedback list:', err);
+        errorEl.textContent = `Failed to load feedback list: ${err.message}`;
         errorEl.style.display = 'block';
-        tbody.innerHTML = '<tr><td colspan="7">Failed to load.</td></tr>';
+        listEl.innerHTML = '';
     }
 }
 
-loadStats();
-setInterval(loadStats, 10000);
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+loadFeedbackList();
+setInterval(loadFeedbackList, 10000);
 </script>
 
 </body>
