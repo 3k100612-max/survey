@@ -87,6 +87,19 @@
         font-size: 0.7rem;
         color: #334155;
     }
+    .entity-tag {
+        display: inline-block;
+        border-radius: 999px;
+        padding: 2px 8px;
+        margin: 2px;
+        font-size: 0.7rem;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+    .entity-tag.Person       { background: #dbeafe; color: #1e40af; }
+    .entity-tag.Organization { background: #ede9fe; color: #5b21b6; }
+    .entity-tag.Location     { background: #dcfce7; color: #166534; }
+    .entity-tag.Misc         { background: #f1f5f9; color: #475569; }
     #error, #topicsError {
         display: none;
         background: #fee2e2;
@@ -220,12 +233,13 @@
             <th>Subjectivity</th>
             <th>Intensity</th>
             <th>Key Phrases</th>
+            <th>Entities</th>
             <th>Words</th>
             <th>Submitted</th>
         </tr>
     </thead>
     <tbody id="tableBody">
-        <tr><td colspan="7">Loading...</td></tr>
+        <tr><td colspan="8">Loading...</td></tr>
     </tbody>
 </table>
 
@@ -282,7 +296,7 @@ async function loadStats() {
         `;
 
         if (!data.feedback || data.feedback.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7">No feedback yet.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8">No feedback yet.</td></tr>';
             return;
         }
 
@@ -297,6 +311,23 @@ async function loadStats() {
                 ? phrases.map(p => `<span class="phrase-tag">${escapeHtml(p)}</span>`).join('')
                 : '<span style="color:#999;">—</span>';
 
+            // Stored as "Type: text, Type: text" — same joined-string
+            // convention as key_phrases. Split on the first colon in each
+            // segment to recover the entity's type (for color-coding) and
+            // its text.
+            const entities = row.entities
+                ? row.entities.split(',').map(e => e.trim()).filter(Boolean)
+                : [];
+            const entitiesHtml = entities.length
+                ? entities.map(e => {
+                    const idx = e.indexOf(':');
+                    const type = idx > -1 ? e.slice(0, idx).trim() : 'Misc';
+                    const text = idx > -1 ? e.slice(idx + 1).trim() : e;
+                    const cls = ['Person', 'Organization', 'Location'].includes(type) ? type : 'Misc';
+                    return `<span class="entity-tag ${cls}" title="${escapeHtml(type)}">${escapeHtml(text)}</span>`;
+                  }).join('')
+                : '<span style="color:#999;">—</span>';
+
             return `
                 <tr>
                     <td>${escapeHtml(row.feedback_text)}</td>
@@ -309,6 +340,7 @@ async function loadStats() {
                         <span style="font-size:0.72rem;color:#999;"> ${intensityPct}%</span>
                     </td>
                     <td>${phrasesHtml}</td>
+                    <td>${entitiesHtml}</td>
                     <td>${row.word_count ?? '—'}</td>
                     <td style="white-space:nowrap;">${new Date(row.created_at).toLocaleString()}</td>
                 </tr>
@@ -319,7 +351,7 @@ async function loadStats() {
         console.error('Failed to load admin stats:', err);
         errorEl.textContent = `Failed to load data: ${err.message}`;
         errorEl.style.display = 'block';
-        tbody.innerHTML = '<tr><td colspan="7">Failed to load.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8">Failed to load.</td></tr>';
     }
 }
 
