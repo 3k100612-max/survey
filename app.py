@@ -82,7 +82,7 @@ def init_db():
     print("Database ready: presentation_feedback table checked/created.")
 
 
-@app.route('/')
+@app.route('/index.html')
 def index():
     return render_template('index.html')
 
