@@ -1,8 +1,10 @@
 import os
 import time
 import re
+import io
+import csv
 import psycopg2
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_file, Response
 from textblob import TextBlob
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
@@ -258,6 +260,62 @@ def admin_stats():
     finally:
         if conn:
             conn.close()
+
+
+@app.route('/admin_export')
+def admin_export():
+    """Export all feedback rows as a CSV file for download.
+    Built entirely in memory (io.StringIO) so nothing is written to disk
+    on the server — the file streams straight to the browser. CSV opens
+    directly in Excel/Sheets/Numbers with no extra library needed."""
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT * FROM presentation_feedback ORDER BY created_at DESC")
+        rows = cur.fetchall()
+        cur.close()
+    except Exception as e:
+        print(f"DB READ ERROR (export): {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
+
+    headers = [
+        "ID", "Feedback", "Sentiment", "Polarity", "Subjectivity Label",
+        "Subjectivity Score", "Intensity", "Key Phrases", "Word Count", "Submitted At"
+    ]
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(headers)
+
+    for row in rows:
+        created_at = row.get("created_at")
+        writer.writerow([
+            row.get("id"),
+            row.get("feedback_text"),
+            row.get("sentiment_label"),
+            row.get("polarity"),
+            row.get("subjectivity_label"),
+            row.get("subjectivity"),
+            row.get("intensity"),
+            row.get("key_phrases"),
+            row.get("word_count"),
+            created_at.strftime("%Y-%m-%d %H:%M:%S") if created_at else None,
+        ])
+
+    csv_data = output.getvalue()
+    output.close()
+
+    filename = f"presentation_feedback_{time.strftime('%Y%m%d_%H%M%S')}.csv"
+
+    return Response(
+        csv_data,
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 
 try:
