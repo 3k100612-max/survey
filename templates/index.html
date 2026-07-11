@@ -54,26 +54,8 @@
 
 <div class="container">
     <header style="text-align: center; margin-bottom: 3rem;">
-        <h1>Text Mining & Sentiment Analysis</h1>
-        <p>A Mathematical Approach to Unstructured Data</p>
+        <h1>Sentiment Analysis</h1>
     </header>
-
-    <!-- Section 1: TF-IDF Simulation -->
-    <section class="card">
-        <h2>1. The TF-IDF Signal Filter</h2>
-        <div class="formula-box">
-            $$w_{t,d} = \text{TF}(t,d) \times \log\left(\frac{N}{n_t}\right)$$
-        </div>
-        <textarea id="docsInput">The contract requires a signature.
-The customer requested a refund.
-The battery life is excellent.</textarea>
-        <div style="display: flex; gap: 10px;">
-            <input type="text" id="wordInput" placeholder="Enter word..." style="flex:1; padding:10px; border-radius:8px; border:1px solid #ccc;">
-            <button class="btn btn-primary" onclick="analyzeWord()">Analyze Word</button>
-            <button class="btn btn-secondary" onclick="compareDocs()">Similarity</button>
-        </div>
-        <div id="miningOutput"></div>
-    </section>
 
     <!-- Section 2: Sentiment Survey -->
     <section class="card" style="border-top: 5px solid var(--secondary);">
@@ -86,7 +68,7 @@ The battery life is excellent.</textarea>
     <!-- Section 3: Admin Dashboard -->
     <section id="adminSection" class="card" style="display:none;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
-            <h2>Instructor Insights</h2>
+            <h2>Presenter Insights</h2>
             <button class="btn btn-secondary" onclick="refreshStats()">Refresh Data</button>
         </div>
         <div class="stats-grid">
