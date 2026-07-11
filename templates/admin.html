@@ -14,6 +14,7 @@
         color: #222;
     }
     h1 { font-size: 1.6rem; }
+    h2 { font-size: 1.15rem; margin-top: 36px; margin-bottom: 12px; }
     #stats {
         display: flex;
         gap: 16px;
@@ -86,13 +87,95 @@
         font-size: 0.7rem;
         color: #334155;
     }
-    #error {
+    #error, #topicsError {
         display: none;
         background: #fee2e2;
         color: #991b1b;
         padding: 12px;
         border-radius: 8px;
         margin-bottom: 16px;
+    }
+
+    /* --- Topic modeling (LDA) section --- */
+    .topics-controls {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+    }
+    .topics-controls label {
+        font-size: 0.85rem;
+        color: #666;
+    }
+    .topics-controls input[type="number"] {
+        width: 60px;
+        padding: 5px 8px;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        font-size: 0.85rem;
+    }
+    .topics-controls button {
+        padding: 8px 16px;
+        font-size: 0.85rem;
+        background: #2563eb;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+    }
+    .topics-controls button:hover { background: #1d4ed8; }
+    .topics-controls button:disabled { background: #93c5fd; cursor: not-allowed; }
+    #topicsNote {
+        display: none;
+        background: #fef9c3;
+        color: #854d0e;
+        padding: 10px 14px;
+        border-radius: 8px;
+        margin-bottom: 12px;
+        font-size: 0.85rem;
+    }
+    #topicsGrid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+        gap: 14px;
+        margin-bottom: 32px;
+    }
+    .topic-card {
+        background: white;
+        border-radius: 8px;
+        padding: 14px 18px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .topic-card h3 {
+        margin: 0 0 8px 0;
+        font-size: 0.95rem;
+    }
+    .topic-word {
+        display: inline-block;
+        background: #eff6ff;
+        color: #1d4ed8;
+        border-radius: 999px;
+        padding: 2px 8px;
+        margin: 2px 4px 2px 0;
+        font-size: 0.72rem;
+        font-weight: 600;
+    }
+    .topic-count {
+        color: #666;
+        font-size: 0.78rem;
+        margin-top: 8px;
+    }
+    .topic-feedback-item {
+        font-size: 0.78rem;
+        color: #444;
+        padding: 5px 0;
+        border-top: 1px solid #f1f5f9;
+    }
+    .topic-feedback-more {
+        font-size: 0.75rem;
+        color: #999;
+        padding-top: 5px;
     }
 </style>
 </head>
@@ -115,6 +198,20 @@
         align-self:flex-start;
     ">⬇ Export to CSV</a>
 </div>
+
+<h2>Discovered Topics (LDA)</h2>
+<div id="topicsError"></div>
+<div class="topics-controls">
+    <label for="nTopicsInput">Number of topics:
+        <input id="nTopicsInput" type="number" min="1" max="20" value="5">
+    </label>
+    <button id="refreshTopicsBtn">Refresh Topics</button>
+</div>
+<div id="topicsNote"></div>
+<div id="topicsGrid">
+    <p style="color:#999;">Loading topics...</p>
+</div>
+
 <table id="feedbackTable">
     <thead>
         <tr>
@@ -226,7 +323,80 @@ async function loadStats() {
     }
 }
 
+async function loadTopics() {
+    const errorEl = document.getElementById('topicsError');
+    const noteEl = document.getElementById('topicsNote');
+    const gridEl = document.getElementById('topicsGrid');
+    const refreshBtn = document.getElementById('refreshTopicsBtn');
+    const nTopics = document.getElementById('nTopicsInput').value || 5;
+
+    refreshBtn.disabled = true;
+    refreshBtn.textContent = 'Modeling...';
+
+    try {
+        const response = await fetch(`/admin_topics?n_topics=${encodeURIComponent(nTopics)}`);
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || `Server responded with ${response.status}`);
+        }
+
+        errorEl.style.display = 'none';
+
+        if (data.note) {
+            noteEl.textContent = data.note;
+            noteEl.style.display = 'block';
+        } else {
+            noteEl.style.display = 'none';
+        }
+
+        if (!data.topics || data.topics.length === 0) {
+            gridEl.innerHTML = '<p style="color:#999;">No topics to show yet.</p>';
+            return;
+        }
+
+        gridEl.innerHTML = data.topics.map(topic => {
+            const wordsHtml = topic.top_words
+                .map(w => `<span class="topic-word">${escapeHtml(w)}</span>`)
+                .join('');
+
+            const shownItems = topic.feedback.slice(0, 5);
+            const feedbackHtml = shownItems
+                .map(f => `<div class="topic-feedback-item">${escapeHtml(f.feedback_text)}</div>`)
+                .join('');
+            const moreCount = topic.feedback.length - shownItems.length;
+            const moreHtml = moreCount > 0
+                ? `<div class="topic-feedback-more">+ ${moreCount} more</div>`
+                : '';
+
+            return `
+                <div class="topic-card">
+                    <h3>Topic ${topic.topic_id + 1}</h3>
+                    <div>${wordsHtml}</div>
+                    <div class="topic-count">${topic.feedback.length} feedback item${topic.feedback.length === 1 ? '' : 's'}</div>
+                    ${feedbackHtml ? `<div style="margin-top:8px;">${feedbackHtml}${moreHtml}</div>` : ''}
+                </div>
+            `;
+        }).join('');
+
+    } catch (err) {
+        console.error('Failed to load topics:', err);
+        errorEl.textContent = `Failed to load topics: ${err.message}`;
+        errorEl.style.display = 'block';
+        gridEl.innerHTML = '';
+    } finally {
+        refreshBtn.disabled = false;
+        refreshBtn.textContent = 'Refresh Topics';
+    }
+}
+
+document.getElementById('refreshTopicsBtn').addEventListener('click', loadTopics);
+
+// Feedback stats refresh automatically (cheap DB read). Topics don't —
+// LDA re-fits the whole corpus on every call, so it only runs on page
+// load and when the admin explicitly clicks "Refresh Topics".
 loadStats();
+loadTopics();
 setInterval(loadStats, 10000);
 </script>
 
