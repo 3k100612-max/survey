@@ -1,8 +1,9 @@
+import os
+import time
+import psycopg2
 from flask import Flask, render_template, request, jsonify
 from textblob import TextBlob
-import psycopg2
 from psycopg2.extras import RealDictCursor
-import os
 
 app = Flask(__name__)
 
@@ -10,17 +11,27 @@ app = Flask(__name__)
 DB_NAME = os.getenv("DB_NAME", "survey_db")
 DB_USER = os.getenv("DB_USER", "admin")
 DB_PASS = os.getenv("DB_PASS", "password123")
-DB_HOST = os.getenv("DB_HOST", "db")  # 'db' matches the docker-compose service name
+DB_HOST = os.getenv("DB_HOST", "db") 
 DB_PORT = os.getenv("DB_PORT", "5432")
 
 def get_db_connection():
-    return psycopg2.connect(
-        dbname=DB_NAME,
-        user=DB_USER,
-        password=DB_PASS,
-        host=DB_HOST,
-        port=DB_PORT
-    )
+    """Retry logic to prevent crash if DB is still booting"""
+    retries = 10
+    while retries > 0:
+        try:
+            conn = psycopg2.connect(
+                dbname=DB_NAME,
+                user=DB_USER,
+                password=DB_PASS,
+                host=DB_HOST,
+                port=DB_PORT
+            )
+            return conn
+        except psycopg2.OperationalError as e:
+            retries -= 1
+            print(f"Waiting for database... {retries} attempts left")
+            time.sleep(3)
+    raise Exception("Could not connect to PostgreSQL.")
 
 @app.route('/')
 def index():
@@ -73,5 +84,6 @@ def admin_stats():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5432)
+if __name__ == "__main__":
+    # CRITICAL: Must be 0.0.0.0 to be reachable outside the container
+    app.run(host="0.0.0.0", port=5000)
