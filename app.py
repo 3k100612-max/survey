@@ -5,9 +5,9 @@ import io
 import csv
 import psycopg2
 from flask import Flask, render_template, request, jsonify, send_file, Response
-from textblob import TextBlob
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
+from transformers import pipeline
 
 # Passenger (cPanel/Plesk/CloudPanel) imports this file directly and does
 # NOT read docker-compose's `env_file: .env` — that only applies when
@@ -31,10 +31,9 @@ print(f"DB config loaded -> host='{DB_HOST}' port={DB_PORT} db='{DB_NAME}' user=
 APP_PORT = int(os.environ.get('PORT', 8507))
 
 # --- SENTIMENT ANALYSIS CONFIG ---
-# TextBlob polarity ranges from -1 (very negative) to +1 (very positive).
-# These thresholds control how polarity maps to a human-readable label.
-# Adjust them if your feedback tends to cluster in the middle (e.g. if
-# almost everything comes back "Neutral", narrow the neutral band).
+# Polarity is reconstructed from the Hugging Face model's per-class scores
+# as (positive_score - negative_score), which lands in roughly -1..1 —
+# same range TextBlob used — so these thresholds still apply unchanged.
 SENTIMENT_THRESHOLDS = [
     (0.5, "Very Positive"),
     (0.1, "Positive"),
@@ -44,6 +43,25 @@ SENTIMENT_THRESHOLDS = [
 ]
 
 MAX_FEEDBACK_LENGTH = 2000  # characters — prevents abuse / junk submissions
+
+# Hugging Face model for sentiment. This is a 3-class (negative/neutral/
+# positive) RoBERTa model fine-tuned on social-media-style text, which
+# tends to generalize well to short freeform feedback.
+HF_SENTIMENT_MODEL = os.environ.get(
+    "HF_SENTIMENT_MODEL", "cardiffnlp/twitter-roberta-base-sentiment-latest"
+)
+
+# Basic stopword list for lightweight key-phrase extraction (no external
+# corpus download required, unlike TextBlob's noun_phrases()).
+_STOPWORDS = {
+    "the", "a", "an", "and", "or", "but", "is", "are", "was", "were", "be",
+    "been", "being", "to", "of", "in", "on", "for", "with", "at", "by",
+    "from", "up", "about", "into", "over", "after", "this", "that", "these",
+    "those", "it", "its", "i", "you", "we", "they", "he", "she", "them",
+    "my", "your", "our", "their", "as", "so", "very", "just", "really",
+    "not", "no", "do", "did", "does", "have", "has", "had", "will", "would",
+    "could", "should", "can", "if", "than", "then", "there", "here", "was",
+}
 
 
 def classify_polarity(polarity):
@@ -56,8 +74,11 @@ def classify_polarity(polarity):
 
 
 def classify_subjectivity(subjectivity):
-    """TextBlob subjectivity ranges 0 (fully objective/factual) to
-    1 (fully subjective/opinion). Bucket it for display."""
+    """Bucket the 0..1 subjectivity proxy for display. Unlike TextBlob's
+    statistical subjectivity score, this is derived from how far the HF
+    model's confidence sits from "neutral" — a proxy for how emotionally
+    loaded/opinionated the text reads, not a linguistic subjectivity
+    measure in the strict sense."""
     if subjectivity >= 0.6:
         return "Opinion"
     elif subjectivity >= 0.3:
@@ -66,35 +87,78 @@ def classify_subjectivity(subjectivity):
         return "Objective"
 
 
-def extract_key_phrases(blob, limit=5):
-    """Pull out noun phrases as a lightweight signal of what the feedback
-    is actually about (e.g. 'the slides', 'audio quality'). Best-effort —
+def extract_key_phrases(text, limit=5):
+    """Lightweight, dependency-free key-phrase extraction: filters
+    stopwords/punctuation and returns the most frequent remaining words,
+    in order of first appearance. Not as linguistically rich as noun-phrase
+    chunking, but needs no extra corpus downloads and is fast. Best-effort —
     returns an empty list rather than raising if extraction fails."""
     try:
-        phrases = list(dict.fromkeys(blob.noun_phrases))  # dedupe, keep order
-        return phrases[:limit]
+        words = re.findall(r"[A-Za-z']+", text.lower())
+        counts = {}
+        order = []
+        for w in words:
+            if w in _STOPWORDS or len(w) < 3:
+                continue
+            if w not in counts:
+                order.append(w)
+            counts[w] = counts.get(w, 0) + 1
+        ranked = sorted(order, key=lambda w: (-counts[w], order.index(w)))
+        return ranked[:limit]
     except Exception as e:
-        print(f"Noun phrase extraction failed (non-fatal): {e}")
+        print(f"Key phrase extraction failed (non-fatal): {e}")
         return []
 
 
+# --- HUGGING FACE SENTIMENT PIPELINE (loaded once at startup) ---
+# Loading a transformer model takes a few seconds, so this must happen
+# ONCE at process startup, not per-request, or every submission would pay
+# that cost. If loading fails (e.g. no internet access to download weights
+# on first run, or missing torch), the app still starts, but
+# /submit_feedback will return a clear 500 telling you why.
+_sentiment_pipeline = None
+
+
+def load_sentiment_pipeline():
+    global _sentiment_pipeline
+    print(f"Loading Hugging Face sentiment model '{HF_SENTIMENT_MODEL}'...")
+    _sentiment_pipeline = pipeline(
+        "sentiment-analysis",
+        model=HF_SENTIMENT_MODEL,
+        top_k=None,  # return scores for ALL labels, not just the top one
+        truncation=True,
+        max_length=512,  # RoBERTa's max sequence length
+    )
+    print("Sentiment model loaded.")
+
+
 def analyze_sentiment(text):
-    """Run TextBlob sentiment analysis and return a dict of results.
-    Isolated in its own function with its own error handling so a bad
-    input or TextBlob hiccup gives a clear error instead of a bare 500."""
-    blob = TextBlob(text)
-    polarity = round(blob.sentiment.polarity, 4)
-    subjectivity = round(blob.sentiment.subjectivity, 4)
+    """Run the Hugging Face sentiment pipeline and return a dict shaped
+    the same way the old TextBlob-based version did, so the rest of the
+    app (DB schema, /admin_stats, CSV export) didn't need to change."""
+    if _sentiment_pipeline is None:
+        raise RuntimeError("Sentiment model is not loaded")
+
+    raw = _sentiment_pipeline(text)[0]  # list of {"label": ..., "score": ...}
+    scores = {r["label"].lower(): r["score"] for r in raw}
+    pos = scores.get("positive", 0.0)
+    neu = scores.get("neutral", 0.0)
+    neg = scores.get("negative", 0.0)
+
+    polarity = round(pos - neg, 4)
+    subjectivity = round(1 - neu, 4)
+    top_label = max(scores, key=scores.get)
+    confidence = round(scores[top_label], 4)
 
     return {
         "polarity": polarity,
         "subjectivity": subjectivity,
         "sentiment_label": classify_polarity(polarity),
         "subjectivity_label": classify_subjectivity(subjectivity),
-        # 0..1 "how strong is this sentiment" — abs(polarity) alone is a
-        # reasonable proxy for intensity/confidence.
-        "intensity": round(abs(polarity), 4),
-        "key_phrases": extract_key_phrases(blob),
+        # Model's confidence in its top predicted class — a more faithful
+        # "intensity" than abs(polarity) alone.
+        "intensity": confidence,
+        "key_phrases": extract_key_phrases(text),
         "word_count": len(text.split()),
     }
 
@@ -185,7 +249,7 @@ def submit_feedback():
         analysis = analyze_sentiment(text)
     except Exception as e:
         # Isolate analysis failures from DB failures — this tells you
-        # immediately if the problem is TextBlob vs. the database.
+        # immediately if the problem is the sentiment model vs. the database.
         print(f"SENTIMENT ANALYSIS ERROR: {e}")
         return jsonify({"error": f"Could not analyze feedback: {e}"}), 500
 
@@ -317,6 +381,11 @@ def admin_export():
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
 
+
+try:
+    load_sentiment_pipeline()
+except Exception as e:
+    print(f"WARNING: could not load sentiment model at startup: {e}")
 
 try:
     init_db()
