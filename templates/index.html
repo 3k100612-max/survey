@@ -5,31 +5,64 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Presentation Feedback</title>
 <style>
+    * { box-sizing: border-box; }
+
     body {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        max-width: 720px;
-        margin: 60px auto;
-        padding: 0 20px;
+        margin: 0;
+        padding: 24px;
         background: #f7f7f9;
         color: #222;
+        line-height: 1.5;
     }
-    h1 { font-size: 1.6rem; margin-bottom: 4px; }
-    h2 { font-size: 1.2rem; margin-top: 48px; margin-bottom: 12px; }
-    p.subtitle { color: #666; margin-top: 0; }
+
+    .page-shell {
+        max-width: 1180px;
+        margin: 36px auto;
+    }
+
+    .page-header { margin-bottom: 24px; }
+    h1 { font-size: 1.8rem; margin: 0 0 4px; }
+    h2 { font-size: 1.2rem; margin: 0 0 12px; }
+    p.subtitle { color: #666; margin: 0; }
+
+    /* Desktop: public feedback is on the left; submission form is on the right. */
+    .app-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+        gap: 24px;
+        align-items: start;
+    }
+
+    .feedback-panel,
+    .submit-panel {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 24px;
+        box-shadow: 0 2px 10px rgba(0,0,0,.05);
+    }
+
+    /* Keeps the form available while scrolling long feedback lists on desktop. */
+    .submit-panel { position: sticky; top: 20px; }
+
     textarea {
         width: 100%;
-        min-height: 120px;
+        min-height: 180px;
         padding: 12px;
         font-size: 1rem;
         border: 1px solid #ccc;
         border-radius: 8px;
-        box-sizing: border-box;
+        font-family: inherit;
         resize: vertical;
     }
+
     button {
+        width: 100%;
         margin-top: 12px;
-        padding: 10px 20px;
+        padding: 11px 20px;
         font-size: 1rem;
+        font-weight: 600;
         background: #2563eb;
         color: white;
         border: none;
@@ -47,153 +80,95 @@
     }
     #result.success { background: #dcfce7; color: #166534; display: block; }
     #result.error { background: #fee2e2; color: #991b1b; display: block; }
-    #result .result-heading {
-        font-weight: 600;
-        margin-bottom: 10px;
-        font-size: 1rem;
-    }
-    #result .result-block {
-        margin-top: 8px;
-        font-size: 0.85rem;
-        line-height: 1.6;
-    }
-    #result .result-label {
-        display: inline-block;
-        min-width: 120px;
-        font-weight: 600;
-        opacity: 0.85;
-    }
-    #result .phrase {
-        display: inline-block;
-        background: rgba(255,255,255,0.6);
-        border-radius: 999px;
-        padding: 2px 8px;
-        margin: 2px 4px 2px 0;
-        font-size: 0.75rem;
-    }
+    #result .result-heading { font-weight: 600; margin-bottom: 10px; font-size: 1rem; }
+    #result .result-block { margin-top: 8px; font-size: .85rem; line-height: 1.6; }
+    #result .result-label { display: inline-block; min-width: 120px; font-weight: 600; opacity: .85; }
+    #result .phrase { display: inline-block; background: rgba(255,255,255,.6); border-radius: 999px; padding: 2px 8px; margin: 2px 4px 2px 0; font-size: .75rem; }
 
-    /* Entity tags (result panel + reused styling) */
-    .entity-tag {
-        display: inline-block;
-        border-radius: 999px;
-        padding: 2px 8px;
-        margin: 2px 4px 2px 0;
-        font-size: 0.72rem;
-        font-weight: 600;
-        white-space: nowrap;
-    }
-    .entity-tag.Person       { background: #dbeafe; color: #1e40af; }
+    .entity-tag { display: inline-block; border-radius: 999px; padding: 2px 8px; margin: 2px 4px 2px 0; font-size: .72rem; font-weight: 600; white-space: nowrap; }
+    .entity-tag.Person { background: #dbeafe; color: #1e40af; }
     .entity-tag.Organization { background: #ede9fe; color: #5b21b6; }
-    .entity-tag.Location     { background: #dcfce7; color: #166534; }
-    .entity-tag.Misc         { background: #f1f5f9; color: #475569; }
+    .entity-tag.Location { background: #dcfce7; color: #166534; }
+    .entity-tag.Misc { background: #f1f5f9; color: #475569; }
 
-    #stats {
-        display: flex;
-        gap: 16px;
-        margin: 16px 0;
-        flex-wrap: wrap;
-    }
-    .stat-card {
-        background: white;
-        border-radius: 8px;
-        padding: 14px 18px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        flex: 1;
-        min-width: 100px;
-    }
+    #stats { display: flex; gap: 16px; margin: 16px 0; flex-wrap: wrap; }
+    .stat-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 18px; flex: 1; min-width: 150px; }
     .stat-card .value { font-size: 1.6rem; font-weight: 600; }
-    .stat-card .label { color: #666; font-size: 0.8rem; }
+    .stat-card .label { color: #666; font-size: .8rem; }
 
-    .feedback-card {
-        background: white;
-        border-radius: 8px;
-        padding: 14px 18px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        margin-bottom: 12px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        flex-wrap: wrap;
-    }
-    .star-rating {
-        font-size: 1.1rem;
-        letter-spacing: 2px;
-    }
+    .feedback-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 18px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .star-rating { font-size: 1.1rem; letter-spacing: 2px; }
     .star-rating .filled { color: #f59e0b; }
     .star-rating .empty { color: #e5e7eb; }
-    .feedback-card .meta-right {
-        font-size: 0.78rem;
-        color: #999;
-        white-space: nowrap;
+    .feedback-card .meta-right { font-size: .78rem; color: #999; white-space: nowrap; }
+
+    #listError { display: none; background: #fee2e2; color: #991b1b; padding: 12px; border-radius: 8px; margin-bottom: 16px; }
+    footer.site-footer { text-align: center; margin-top: 36px; padding: 20px 0; color: #999; font-size: .8rem; }
+
+    /* iPad and smaller screens */
+    @media (max-width: 850px) {
+        body { padding: 16px; }
+        .page-shell { margin: 20px auto; }
+        .app-layout { grid-template-columns: 1fr; }
+        .submit-panel { position: static; order: -1; }
     }
 
-    #listError {
-        display: none;
-        background: #fee2e2;
-        color: #991b1b;
-        padding: 12px;
-        border-radius: 8px;
-        margin-bottom: 16px;
-    }
-
-    footer.site-footer {
-        text-align: center;
-        margin-top: 48px;
-        padding: 20px 0;
-        color: #999;
-        font-size: 0.8rem;
+    /* Phones */
+    @media (max-width: 520px) {
+        body { padding: 10px; }
+        .page-shell { margin: 10px auto; }
+        h1 { font-size: 1.5rem; }
+        .feedback-panel, .submit-panel { padding: 16px; border-radius: 10px; }
+        textarea { min-height: 150px; font-size: 16px; }
+        .result-label { min-width: 0 !important; display: block !important; }
+        .feedback-card { padding: 12px; }
     }
 </style>
 </head>
 <body>
+<div class="page-shell">
+    <header class="page-header">
+        <h1>Presentation Feedback</h1>
+        <p class="subtitle">Let us know what you thought - a sentence or two is great.</p>
+    </header>
 
-<h1>Presentation Feedback</h1>
-<p class="subtitle">Let us know what you thought — a sentence or two is great.</p>
+    <main class="app-layout">
+        <!-- LEFT: public feedback summary and ratings -->
+        <section class="feedback-panel" aria-labelledby="others-heading">
+            <h2 id="others-heading">What others said</h2>
+            <div id="listError" role="alert"></div>
+            <div id="stats"></div>
+            <div id="feedbackList" aria-live="polite"></div>
+        </section>
 
-<textarea id="feedbackText" placeholder="Type your feedback here..."></textarea>
-<br>
-<button id="submitBtn">Submit Feedback</button>
+        <!-- RIGHT: feedback form -->
+        <section class="submit-panel" aria-labelledby="form-heading">
+            <h2 id="form-heading">Share your feedback</h2>
+            <p class="subtitle">Your comment is analyzed for sentiment and saved securely.</p>
+            <label for="feedbackText">Your feedback</label>
+            <textarea id="feedbackText" maxlength="2000" placeholder="Type your feedback here..."></textarea>
+            <button id="submitBtn">Submit Feedback</button>
+            <div id="result" role="status" aria-live="polite"></div>
+        </section>
+    </main>
 
-<div id="result"></div>
-
-<h2>What others said</h2>
-<div id="listError"></div>
-<div id="stats"></div>
-<div id="feedbackList"></div>
-
-<footer class="site-footer">2026 &copy; timothymark bal-e</footer>
+    <footer class="site-footer">2026 &copy; timothymark bal-e</footer>
+</div>
 
 <script>
 const submitBtn = document.getElementById('submitBtn');
 const feedbackText = document.getElementById('feedbackText');
 const result = document.getElementById('result');
 
-function sentimentClass(label) {
-    return (label || 'Neutral').replace(/\s+/g, '');
-}
-
-// Maps a sentiment label to a 1-5 star rating so raw comment text never
-// has to be shown in the public "what others said" list — just a quick
-// visual signal of how the feedback leaned.
 function starsForLabel(label) {
-    const map = {
-        'Very Positive': 5,
-        'Positive': 4,
-        'Neutral': 3,
-        'Negative': 2,
-        'Very Negative': 1,
-    };
+    const map = { 'Very Positive': 5, 'Positive': 4, 'Neutral': 3, 'Negative': 2, 'Very Negative': 1 };
     return map[label] || 3;
 }
 
 function renderStars(count) {
-    let html = '<span class="star-rating">';
-    for (let i = 1; i <= 5; i++) {
-        html += `<span class="${i <= count ? 'filled' : 'empty'}">★</span>`;
-    }
-    html += '</span>';
-    return html;
+    let html = '<span class="star-rating" aria-label="' + count + ' out of 5 stars">';
+    for (let i = 1; i <= 5; i++) html += `<span class="${i <= count ? 'filled' : 'empty'}">&#9733;</span>`;
+    return html + '</span>';
 }
 
 function escapeHtml(str) {
@@ -223,20 +198,15 @@ submitBtn.addEventListener('click', async () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ feedback: text })
         });
-
         const data = await response.json();
+        if (!response.ok) throw new Error(data.error || `Server responded with ${response.status}`);
 
-        if (!response.ok) {
-            throw new Error(data.error || `Server responded with ${response.status}`);
-        }
-
-        const phrasesHtml = (data.key_phrases && data.key_phrases.length)
+        const phrasesHtml = data.key_phrases?.length
             ? data.key_phrases.map(p => `<span class="phrase">${escapeHtml(p)}</span>`).join('')
-            : '<span style="opacity:0.7;">None detected</span>';
-
-        const entitiesHtml = (data.entities && data.entities.length)
+            : '<span style="opacity:.7;">None detected</span>';
+        const entitiesHtml = data.entities?.length
             ? data.entities.map(e => `<span class="entity-tag ${['Person','Organization','Location'].includes(e.type) ? e.type : 'Misc'}" title="${escapeHtml(e.type)}">${escapeHtml(e.text)}</span>`).join('')
-            : '<span style="opacity:0.7;">None detected</span>';
+            : '<span style="opacity:.7;">None detected</span>';
 
         result.innerHTML = `
             <div class="result-heading">Thanks! Here's what we detected:</div>
@@ -244,14 +214,11 @@ submitBtn.addEventListener('click', async () => {
             <div class="result-block"><span class="result-label">Subjectivity:</span> ${escapeHtml(data.subjectivity_label)}</div>
             <div class="result-block"><span class="result-label">Intensity:</span> ${Math.round(data.intensity * 100)}%</div>
             <div class="result-block"><span class="result-label">Key Phrases:</span> ${phrasesHtml}</div>
-            <div class="result-block"><span class="result-label">Entities Detected:</span> ${entitiesHtml}</div>
-        `;
+            <div class="result-block"><span class="result-label">Entities Detected:</span> ${entitiesHtml}</div>`;
         result.className = 'success';
         result.style.display = 'block';
         feedbackText.value = '';
-
         loadFeedbackList();
-
     } catch (err) {
         console.error('Submit failed:', err);
         result.textContent = `Something went wrong: ${err.message}`;
@@ -267,47 +234,18 @@ async function loadFeedbackList() {
     const errorEl = document.getElementById('listError');
     const statsEl = document.getElementById('stats');
     const listEl = document.getElementById('feedbackList');
-
     try {
         const response = await fetch('/admin_stats');
         const data = await response.json();
-
-        if (!response.ok) {
-            throw new Error(data.error || `Server responded with ${response.status}`);
-        }
-
+        if (!response.ok) throw new Error(data.error || `Server responded with ${response.status}`);
         errorEl.style.display = 'none';
-
-        const total = data.stats.total || 0;
-
-        // Only the total response count is shown publicly here — the
-        // aggregate polarity/subjectivity/pos-neu-neg breakdown stays on
-        // the admin dashboard.
-        statsEl.innerHTML = `
-            <div class="stat-card">
-                <div class="value">${total}</div>
-                <div class="label">Total Responses</div>
-            </div>
-        `;
-
-        if (!data.feedback || data.feedback.length === 0) {
-            listEl.innerHTML = '<p>No feedback yet — be the first!</p>';
-            return;
-        }
-
-        // Each entry shows a star rating (derived from sentiment) and a
-        // date only — the actual comment text is kept out of the public
-        // list.
+        statsEl.innerHTML = `<div class="stat-card"><div class="value">${data.stats.total || 0}</div><div class="label">Total Responses</div></div>`;
+        if (!data.feedback?.length) { listEl.innerHTML = '<p>No feedback yet - be the first!</p>'; return; }
         listEl.innerHTML = data.feedback.map(row => {
             const stars = starsForLabel(row.sentiment_label || 'Neutral');
-            return `
-                <div class="feedback-card">
-                    ${renderStars(stars)}
-                    <span class="meta-right">${new Date(row.created_at).toLocaleDateString()}</span>
-                </div>
-            `;
+            const date = row.created_at ? new Date(row.created_at).toLocaleDateString() : 'Date unavailable';
+            return `<div class="feedback-card">${renderStars(stars)}<span class="meta-right">${date}</span></div>`;
         }).join('');
-
     } catch (err) {
         console.error('Failed to load feedback list:', err);
         errorEl.textContent = `Failed to load feedback list: ${err.message}`;
@@ -319,6 +257,5 @@ async function loadFeedbackList() {
 loadFeedbackList();
 setInterval(loadFeedbackList, 10000);
 </script>
-
 </body>
 </html>
