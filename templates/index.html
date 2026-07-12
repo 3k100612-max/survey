@@ -38,17 +38,29 @@
     }
     button:disabled { background: #93c5fd; cursor: not-allowed; }
     button:hover:not(:disabled) { background: #1d4ed8; }
+
     #result {
         margin-top: 20px;
-        padding: 14px;
+        padding: 16px 18px;
         border-radius: 8px;
         display: none;
     }
     #result.success { background: #dcfce7; color: #166534; display: block; }
     #result.error { background: #fee2e2; color: #991b1b; display: block; }
-    #result .meta {
+    #result .result-heading {
+        font-weight: 600;
+        margin-bottom: 10px;
+        font-size: 1rem;
+    }
+    #result .result-block {
         margin-top: 8px;
         font-size: 0.85rem;
+        line-height: 1.6;
+    }
+    #result .result-label {
+        display: inline-block;
+        min-width: 120px;
+        font-weight: 600;
         opacity: 0.85;
     }
     #result .phrase {
@@ -59,6 +71,21 @@
         margin: 2px 4px 2px 0;
         font-size: 0.75rem;
     }
+
+    /* Entity tags (result panel + reused styling) */
+    .entity-tag {
+        display: inline-block;
+        border-radius: 999px;
+        padding: 2px 8px;
+        margin: 2px 4px 2px 0;
+        font-size: 0.72rem;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+    .entity-tag.Person       { background: #dbeafe; color: #1e40af; }
+    .entity-tag.Organization { background: #ede9fe; color: #5b21b6; }
+    .entity-tag.Location     { background: #dcfce7; color: #166534; }
+    .entity-tag.Misc         { background: #f1f5f9; color: #475569; }
 
     #stats {
         display: flex;
@@ -83,59 +110,80 @@
         padding: 14px 18px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         margin-bottom: 12px;
-    }
-    .feedback-card .text { font-size: 0.95rem; margin-bottom: 8px; }
-    .feedback-card .row {
         display: flex;
         align-items: center;
-        gap: 8px;
+        justify-content: space-between;
+        gap: 12px;
         flex-wrap: wrap;
+    }
+    .star-rating {
+        font-size: 1.1rem;
+        letter-spacing: 2px;
+    }
+    .star-rating .filled { color: #f59e0b; }
+    .star-rating .empty { color: #e5e7eb; }
+    .feedback-card .meta-right {
         font-size: 0.78rem;
-        color: #666;
+        color: #999;
+        white-space: nowrap;
     }
-    .tag {
-        padding: 2px 8px;
-        border-radius: 999px;
-        font-size: 0.72rem;
-        font-weight: 600;
-    }
-    .tag.VeryPositive, .tag.Positive { background: #dcfce7; color: #166534; }
-    .tag.VeryNegative, .tag.Negative { background: #fee2e2; color: #991b1b; }
-    .tag.Neutral  { background: #f1f5f9; color: #475569; }
-    .subj-tag {
-        padding: 2px 8px;
-        border-radius: 999px;
-        font-size: 0.72rem;
-        background: #ede9fe;
-        color: #5b21b6;
-    }
-    .intensity-bar-track {
-        width: 60px;
-        height: 6px;
-        background: #eee;
-        border-radius: 3px;
-        overflow: hidden;
-        display: inline-block;
-        vertical-align: middle;
-    }
-    .intensity-bar-fill {
-        height: 100%;
-        background: #2563eb;
-    }
-    .phrase-tag {
-        background: #f1f5f9;
-        border-radius: 999px;
-        padding: 2px 8px;
-        font-size: 0.72rem;
-        color: #334155;
-    }
-    #listError {
+
+    #listError, #topicsError {
         display: none;
         background: #fee2e2;
         color: #991b1b;
         padding: 12px;
         border-radius: 8px;
         margin-bottom: 16px;
+    }
+
+    /* --- Discovered topics section --- */
+    #topicsNote {
+        display: none;
+        background: #fef9c3;
+        color: #854d0e;
+        padding: 10px 14px;
+        border-radius: 8px;
+        margin-bottom: 12px;
+        font-size: 0.85rem;
+    }
+    #topicsGrid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 14px;
+    }
+    .topic-card {
+        background: white;
+        border-radius: 8px;
+        padding: 14px 18px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .topic-card h3 {
+        margin: 0 0 8px 0;
+        font-size: 0.9rem;
+    }
+    .topic-word {
+        display: inline-block;
+        background: #eff6ff;
+        color: #1d4ed8;
+        border-radius: 999px;
+        padding: 2px 8px;
+        margin: 2px 4px 2px 0;
+        font-size: 0.7rem;
+        font-weight: 600;
+    }
+    .topic-count {
+        color: #666;
+        font-size: 0.76rem;
+        margin-top: 8px;
+    }
+
+    footer.site-footer {
+        text-align: center;
+        margin-top: 48px;
+        padding: 20px 0;
+        color: #999;
+        font-size: 0.8rem;
     }
 </style>
 </head>
@@ -150,10 +198,19 @@
 
 <div id="result"></div>
 
+<h2>Discovered Topics</h2>
+<div id="topicsError"></div>
+<div id="topicsNote"></div>
+<div id="topicsGrid">
+    <p style="color:#999;">Loading topics...</p>
+</div>
+
 <h2>What others said</h2>
 <div id="listError"></div>
 <div id="stats"></div>
 <div id="feedbackList"></div>
+
+<footer class="site-footer">2026 &copy; timothymark bal-e</footer>
 
 <script>
 const submitBtn = document.getElementById('submitBtn');
@@ -161,7 +218,36 @@ const feedbackText = document.getElementById('feedbackText');
 const result = document.getElementById('result');
 
 function sentimentClass(label) {
-    return label.replace(/\s+/g, '');
+    return (label || 'Neutral').replace(/\s+/g, '');
+}
+
+// Maps a sentiment label to a 1-5 star rating so raw comment text never
+// has to be shown in the public "what others said" list — just a quick
+// visual signal of how the feedback leaned.
+function starsForLabel(label) {
+    const map = {
+        'Very Positive': 5,
+        'Positive': 4,
+        'Neutral': 3,
+        'Negative': 2,
+        'Very Negative': 1,
+    };
+    return map[label] || 3;
+}
+
+function renderStars(count) {
+    let html = '<span class="star-rating">';
+    for (let i = 1; i <= 5; i++) {
+        html += `<span class="${i <= count ? 'filled' : 'empty'}">★</span>`;
+    }
+    html += '</span>';
+    return html;
+}
+
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
 }
 
 submitBtn.addEventListener('click', async () => {
@@ -194,20 +280,26 @@ submitBtn.addEventListener('click', async () => {
 
         const phrasesHtml = (data.key_phrases && data.key_phrases.length)
             ? data.key_phrases.map(p => `<span class="phrase">${escapeHtml(p)}</span>`).join('')
-            : '';
+            : '<span style="opacity:0.7;">None detected</span>';
+
+        const entitiesHtml = (data.entities && data.entities.length)
+            ? data.entities.map(e => `<span class="entity-tag ${['Person','Organization','Location'].includes(e.type) ? e.type : 'Misc'}" title="${escapeHtml(e.type)}">${escapeHtml(e.text)}</span>`).join('')
+            : '<span style="opacity:0.7;">None detected</span>';
 
         result.innerHTML = `
-            Thanks! Sentiment detected: <strong>${escapeHtml(data.label)}</strong> (polarity: ${data.polarity})
-            <div class="meta">
-                ${escapeHtml(data.subjectivity_label)} · intensity ${Math.round(data.intensity * 100)}%
-                ${phrasesHtml ? '<br>' + phrasesHtml : ''}
-            </div>
+            <div class="result-heading">Thanks! Here's what we detected:</div>
+            <div class="result-block"><span class="result-label">Sentiment:</span> <strong>${escapeHtml(data.label)}</strong> (polarity ${data.polarity})</div>
+            <div class="result-block"><span class="result-label">Subjectivity:</span> ${escapeHtml(data.subjectivity_label)}</div>
+            <div class="result-block"><span class="result-label">Intensity:</span> ${Math.round(data.intensity * 100)}%</div>
+            <div class="result-block"><span class="result-label">Key Phrases:</span> ${phrasesHtml}</div>
+            <div class="result-block"><span class="result-label">Entities Detected:</span> ${entitiesHtml}</div>
         `;
         result.className = 'success';
         result.style.display = 'block';
         feedbackText.value = '';
 
         loadFeedbackList();
+        loadTopics();
 
     } catch (err) {
         console.error('Submit failed:', err);
@@ -236,28 +328,14 @@ async function loadFeedbackList() {
         errorEl.style.display = 'none';
 
         const total = data.stats.total || 0;
-        const avgPol = data.stats.avg_pol !== null ? Number(data.stats.avg_pol).toFixed(2) : '0.00';
-        const avgSubj = data.stats.avg_subj !== null ? Number(data.stats.avg_subj).toFixed(2) : '0.00';
-        const pos = data.stats.positive_count || 0;
-        const neu = data.stats.neutral_count || 0;
-        const neg = data.stats.negative_count || 0;
 
+        // Only the total response count is shown publicly here — the
+        // aggregate polarity/subjectivity/pos-neu-neg breakdown stays on
+        // the admin dashboard.
         statsEl.innerHTML = `
             <div class="stat-card">
                 <div class="value">${total}</div>
                 <div class="label">Total Responses</div>
-            </div>
-            <div class="stat-card">
-                <div class="value">${avgPol}</div>
-                <div class="label">Avg Polarity</div>
-            </div>
-            <div class="stat-card">
-                <div class="value">${avgSubj}</div>
-                <div class="label">Avg Subjectivity</div>
-            </div>
-            <div class="stat-card">
-                <div class="value">${pos} / ${neu} / ${neg}</div>
-                <div class="label">Pos / Neutral / Neg</div>
             </div>
         `;
 
@@ -266,30 +344,15 @@ async function loadFeedbackList() {
             return;
         }
 
+        // Each entry shows a star rating (derived from sentiment) and a
+        // date only — the actual comment text is kept out of the public
+        // list.
         listEl.innerHTML = data.feedback.map(row => {
-            const cls = sentimentClass(row.sentiment_label || 'Neutral');
-            const intensityPct = row.intensity !== null && row.intensity !== undefined
-                ? Math.round(row.intensity * 100) : 0;
-            const phrases = row.key_phrases
-                ? row.key_phrases.split(',').map(p => p.trim()).filter(Boolean)
-                : [];
-            const phrasesHtml = phrases.map(p => `<span class="phrase-tag">${escapeHtml(p)}</span>`).join('');
-
+            const stars = starsForLabel(row.sentiment_label || 'Neutral');
             return `
                 <div class="feedback-card">
-                    <div class="text">${escapeHtml(row.feedback_text)}</div>
-                    <div class="row">
-                        <span class="tag ${cls}">${escapeHtml(row.sentiment_label || 'Neutral')}</span>
-                        ${row.subjectivity_label ? `<span class="subj-tag">${escapeHtml(row.subjectivity_label)}</span>` : ''}
-                        <span>
-                            intensity
-                            <span class="intensity-bar-track">
-                                <span class="intensity-bar-fill" style="width:${intensityPct}%"></span>
-                            </span>
-                        </span>
-                        <span>${new Date(row.created_at).toLocaleString()}</span>
-                    </div>
-                    ${phrasesHtml ? `<div class="row" style="margin-top:6px;">${phrasesHtml}</div>` : ''}
+                    ${renderStars(stars)}
+                    <span class="meta-right">${new Date(row.created_at).toLocaleDateString()}</span>
                 </div>
             `;
         }).join('');
@@ -302,13 +365,56 @@ async function loadFeedbackList() {
     }
 }
 
-function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
+async function loadTopics() {
+    const errorEl = document.getElementById('topicsError');
+    const noteEl = document.getElementById('topicsNote');
+    const gridEl = document.getElementById('topicsGrid');
+
+    try {
+        const response = await fetch('/admin_topics?n_topics=5');
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || `Server responded with ${response.status}`);
+        }
+
+        errorEl.style.display = 'none';
+
+        if (data.note) {
+            noteEl.textContent = data.note;
+            noteEl.style.display = 'block';
+        } else {
+            noteEl.style.display = 'none';
+        }
+
+        if (!data.topics || data.topics.length === 0) {
+            gridEl.innerHTML = '<p style="color:#999;">No topics to show yet.</p>';
+            return;
+        }
+
+        gridEl.innerHTML = data.topics.map(topic => {
+            const wordsHtml = topic.top_words
+                .map(w => `<span class="topic-word">${escapeHtml(w)}</span>`)
+                .join('');
+            return `
+                <div class="topic-card">
+                    <h3>Topic ${topic.topic_id + 1}</h3>
+                    <div>${wordsHtml}</div>
+                    <div class="topic-count">${topic.feedback.length} feedback item${topic.feedback.length === 1 ? '' : 's'}</div>
+                </div>
+            `;
+        }).join('');
+
+    } catch (err) {
+        console.error('Failed to load topics:', err);
+        errorEl.textContent = `Failed to load topics: ${err.message}`;
+        errorEl.style.display = 'block';
+        gridEl.innerHTML = '';
+    }
 }
 
 loadFeedbackList();
+loadTopics();
 setInterval(loadFeedbackList, 10000);
 </script>
 
