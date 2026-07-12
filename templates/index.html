@@ -128,54 +128,13 @@
         white-space: nowrap;
     }
 
-    #listError, #topicsError {
+    #listError {
         display: none;
         background: #fee2e2;
         color: #991b1b;
         padding: 12px;
         border-radius: 8px;
         margin-bottom: 16px;
-    }
-
-    /* --- Discovered topics section --- */
-    #topicsNote {
-        display: none;
-        background: #fef9c3;
-        color: #854d0e;
-        padding: 10px 14px;
-        border-radius: 8px;
-        margin-bottom: 12px;
-        font-size: 0.85rem;
-    }
-    #topicsGrid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-        gap: 14px;
-    }
-    .topic-card {
-        background: white;
-        border-radius: 8px;
-        padding: 14px 18px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    }
-    .topic-card h3 {
-        margin: 0 0 8px 0;
-        font-size: 0.9rem;
-    }
-    .topic-word {
-        display: inline-block;
-        background: #eff6ff;
-        color: #1d4ed8;
-        border-radius: 999px;
-        padding: 2px 8px;
-        margin: 2px 4px 2px 0;
-        font-size: 0.7rem;
-        font-weight: 600;
-    }
-    .topic-count {
-        color: #666;
-        font-size: 0.76rem;
-        margin-top: 8px;
     }
 
     footer.site-footer {
@@ -197,13 +156,6 @@
 <button id="submitBtn">Submit Feedback</button>
 
 <div id="result"></div>
-
-<h2>Discovered Topics</h2>
-<div id="topicsError"></div>
-<div id="topicsNote"></div>
-<div id="topicsGrid">
-    <p style="color:#999;">Loading topics...</p>
-</div>
 
 <h2>What others said</h2>
 <div id="listError"></div>
@@ -299,7 +251,6 @@ submitBtn.addEventListener('click', async () => {
         feedbackText.value = '';
 
         loadFeedbackList();
-        loadTopics();
 
     } catch (err) {
         console.error('Submit failed:', err);
@@ -365,56 +316,7 @@ async function loadFeedbackList() {
     }
 }
 
-async function loadTopics() {
-    const errorEl = document.getElementById('topicsError');
-    const noteEl = document.getElementById('topicsNote');
-    const gridEl = document.getElementById('topicsGrid');
-
-    try {
-        const response = await fetch('/admin_topics?n_topics=5');
-        const data = await response.json();
-
-        if (!response.ok) {
-            throw new Error(data.error || `Server responded with ${response.status}`);
-        }
-
-        errorEl.style.display = 'none';
-
-        if (data.note) {
-            noteEl.textContent = data.note;
-            noteEl.style.display = 'block';
-        } else {
-            noteEl.style.display = 'none';
-        }
-
-        if (!data.topics || data.topics.length === 0) {
-            gridEl.innerHTML = '<p style="color:#999;">No topics to show yet.</p>';
-            return;
-        }
-
-        gridEl.innerHTML = data.topics.map(topic => {
-            const wordsHtml = topic.top_words
-                .map(w => `<span class="topic-word">${escapeHtml(w)}</span>`)
-                .join('');
-            return `
-                <div class="topic-card">
-                    <h3>Topic ${topic.topic_id + 1}</h3>
-                    <div>${wordsHtml}</div>
-                    <div class="topic-count">${topic.feedback.length} feedback item${topic.feedback.length === 1 ? '' : 's'}</div>
-                </div>
-            `;
-        }).join('');
-
-    } catch (err) {
-        console.error('Failed to load topics:', err);
-        errorEl.textContent = `Failed to load topics: ${err.message}`;
-        errorEl.style.display = 'block';
-        gridEl.innerHTML = '';
-    }
-}
-
 loadFeedbackList();
-loadTopics();
 setInterval(loadFeedbackList, 10000);
 </script>
 
